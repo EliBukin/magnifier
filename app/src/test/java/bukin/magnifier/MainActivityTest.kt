@@ -269,6 +269,12 @@ class MainActivityTest {
         // A tap on the picture locks the focus again.
         activity.onFocusEvent(FocusEvent.TAP_PICTURE)
         assertEquals(FocusMode.LOCKED, activity.focusMode)
+        // At an end of the slider, its button still takes over.
+        slider.value = 0f
+        activity.onFocusEvent(FocusEvent.TAP_PICTURE)
+        activity.findViewById<View>(R.id.focusNear).performClick()
+        assertEquals(0f, slider.value, 1e-4f)
+        assertEquals(FocusMode.MANUAL, activity.focusMode)
     }
 
     @Test

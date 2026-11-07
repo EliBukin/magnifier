@@ -37,6 +37,7 @@ import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
+import androidx.camera.core.CameraControl
 import androidx.camera.core.CameraInfo
 import androidx.camera.core.CameraInfoUnavailableException
 import androidx.camera.core.CameraSelector
@@ -95,6 +96,12 @@ class MainActivity : AppCompatActivity() {
     @VisibleForTesting
     @Volatile
     internal var manualFocus: ManualFocus? = null
+
+    /**
+     * Set when the app leaves the screen. The camera is already closing then, so it can't take
+     * the return to Auto; it gets it again when it reopens.
+     */
+    private var resetFocusOnOpen = false
 
     /** Counts focus changes, so a slow camera reply to an older one is ignored. */
     private var focusGeneration = 0
@@ -284,7 +291,14 @@ class MainActivity : AppCompatActivity() {
                 debugLog("camera state ${state.type}, error ${error.code}", error.cause)
                 showProblem(CameraProblem.fromCameraStateError(error.code))
             }
-            state.type == CameraState.Type.OPEN -> showProblem(null)
+            state.type == CameraState.Type.OPEN -> {
+                showProblem(null)
+                if (resetFocusOnOpen) {
+                    resetFocusOnOpen = false
+                    // Manual focus options outlive a camera close: clear them now it's open.
+                    if (focusMode == FocusMode.AUTO) camera?.let { backToAuto(it) }
+                }
+            }
         }
     }
 
@@ -397,15 +411,23 @@ class MainActivity : AppCompatActivity() {
         focusSlider.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
             override fun onStartTrackingTouch(slider: Slider) {
                 draggingFocusSlider = true
+                // Touching the slider takes over, even where its value doesn't change.
+                onFocusEvent(FocusEvent.FOCUS_SLIDER)
             }
 
             override fun onStopTrackingTouch(slider: Slider) {
                 draggingFocusSlider = false
             }
         })
-        focusNear.setOnClickListener { focusSlider.value = ManualFocus.step(focusSlider.value, -1) }
-        focusFar.setOnClickListener { focusSlider.value = ManualFocus.step(focusSlider.value, 1) }
+        focusNear.setOnClickListener { stepFocus(-1) }
+        focusFar.setOnClickListener { stepFocus(1) }
         focusSlider.setLabelFormatter { value -> spokenFocus(value) }
+    }
+
+    /** The near / far buttons. Also at an end of the slider, they take over the focus. */
+    private fun stepFocus(steps: Int) = with(binding.focusSlider) {
+        val target = ManualFocus.step(value, steps)
+        if (target != value) value = target else onFocusEvent(FocusEvent.FOCUS_SLIDER)
     }
 
     private fun spokenFocus(value: Float): String {
@@ -541,6 +563,7 @@ class MainActivity : AppCompatActivity() {
         val new = old.next(event, manualSupported = manualFocus != null)
         focusMode = new
         val generation = ++focusGeneration
+        if (event == FocusEvent.LEFT_APP) resetFocusOnOpen = true
         val cam = camera
         if (cam != null) {
             when (new) {
@@ -641,7 +664,8 @@ class MainActivity : AppCompatActivity() {
             try {
                 get()
             } catch (e: Exception) {
-                debugLog("$what: ${e.javaClass.simpleName} ${e.message}")
+                // Expected and harmless: a newer change replaced this one, or the camera closed.
+                if (e.cause !is CameraControl.OperationCanceledException) debugLog("$what failed", e)
             }
         }, ContextCompat.getMainExecutor(this@MainActivity))
     }
