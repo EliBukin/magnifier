@@ -60,6 +60,13 @@
             </intent-filter>
         </activity>
 
+        <!-- About and privacy: version, "nothing leaves your phone", the policy (browser), email
+             and licences. Reached only from the "i" button. -->
+        <activity
+            android:name=".AboutActivity"
+            android:exported="false"
+            android:label="@string/about_title" />
+
         <!-- Hands a shared picture to the app the user picks, read-only, for that share only.
              Only cache/shared/ is exposed (res/xml/file_paths.xml). -->
         <provider

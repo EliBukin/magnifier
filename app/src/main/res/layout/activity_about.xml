@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- About and privacy: big text on black (the theme's window background), like the rest of the
+     app. Scrolls on small screens and with large fonts. -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/aboutScroll"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:id="@+id/aboutContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="24dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="24dp">
+
+        <ImageButton
+            android:id="@+id/aboutBack"
+            android:layout_width="@dimen/about_button"
+            android:layout_height="@dimen/about_button"
+            android:layout_marginStart="-12dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/about_back"
+            android:scaleType="center"
+            android:src="@drawable/ic_arrow_back"
+            app:tint="@color/control_foreground" />
+
+        <ImageView
+            android:layout_width="96dp"
+            android:layout_height="96dp"
+            android:layout_gravity="center_horizontal"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_launcher_foreground" />
+
+        <TextView
+            android:id="@+id/aboutTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="@string/app_name"
+            android:textColor="@color/control_foreground"
+            android:textSize="30sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/aboutVersion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center"
+            android:textColor="@color/control_foreground"
+            android:textSize="20sp" />
+
+        <TextView
+            android:id="@+id/aboutPrivacyTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:text="@string/about_no_internet_title"
+            android:textColor="@color/accent"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/aboutPrivacyBody"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/about_no_internet_body"
+            android:textColor="@color/control_foreground"
+            android:textSize="20sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/aboutPrivacyPolicy"
+            style="@style/Widget.Magnifier.AboutButton"
+            android:layout_marginTop="28dp"
+            android:text="@string/about_privacy_policy"
+            app:icon="@drawable/ic_open_external" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/aboutContact"
+            style="@style/Widget.Magnifier.AboutButton"
+            android:layout_marginTop="16dp"
+            android:text="@string/about_contact"
+            app:icon="@drawable/ic_email" />
+
+        <!-- The address itself, to copy by hand (long press) when there is no email app. -->
+        <TextView
+            android:id="@+id/aboutEmail"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:textColor="@color/control_foreground"
+            android:textDirection="ltr"
+            android:textIsSelectable="true"
+            android:textSize="18sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/aboutLicences"
+            style="@style/Widget.Magnifier.AboutButton.Outlined"
+            android:layout_marginTop="24dp"
+            android:text="@string/about_licences" />
+    </LinearLayout>
+</ScrollView>

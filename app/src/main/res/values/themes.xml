@@ -85,4 +85,28 @@
         <item name="android:insetBottom">0dp</item>
         <item name="android:textSize">22sp</item>
     </style>
+
+    <!-- The About screen's buttons: full width, at least 64dp tall, big text, wrapping when long. -->
+    <style name="Widget.Magnifier.AboutButton" parent="Widget.Material3.Button">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">@dimen/touch_target</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:textSize">20sp</item>
+        <item name="iconGravity">textStart</item>
+        <item name="iconSize">26dp</item>
+    </style>
+
+    <style name="Widget.Magnifier.AboutButton.Outlined" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">@dimen/touch_target</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:textColor">@color/control_foreground</item>
+        <item name="strokeColor">@color/control_foreground</item>
+        <item name="strokeWidth">2dp</item>
+    </style>
 </resources>

@@ -112,4 +112,21 @@
     <string name="error_dnd">מצב \"נא לא להפריע\" חוסם את המצלמה. יש לכבות אותו ולהקיש על \"ניסיון חוזר\".</string>
     <string name="error_generic">לא ניתן היה להפעיל את המצלמה. יש להקיש על \"ניסיון חוזר\".</string>
     <string name="error_try_again">ניסיון חוזר</string>
+
+    <!-- About and privacy -->
+    <string name="about_button_desc">אודות ופרטיות</string>
+    <string name="about_title">אודות</string>
+    <string name="about_back">חזרה לזכוכית המגדלת</string>
+    <string name="about_version">גרסה %1$s</string>
+    <string name="about_no_internet_title">בלי אינטרנט: שום דבר לא יוצא מהטלפון</string>
+    <string name="about_no_internet_body">לאפליקציה אין הרשאת אינטרנט, אין בה פרסומות ואין חשבונות. התמונות נשארות בטלפון, אלא אם שומרים או משתפים אותן בעצמך.</string>
+    <string name="about_privacy_policy">מדיניות הפרטיות</string>
+    <string name="about_contact">שליחת אימייל למפתח</string>
+    <string name="about_licences">רישיונות קוד פתוח</string>
+    <string name="about_close">סגירה</string>
+    <string name="about_action_browser">פתיחה בדפדפן</string>
+    <string name="about_action_email">כתיבה באפליקציית האימייל</string>
+    <string name="about_no_browser">לא נמצא דפדפן. מדיניות הפרטיות נמצאת בכתובת %1$s</string>
+    <string name="about_no_email">לא נמצאה אפליקציית אימייל. אפשר לכתוב אל %1$s</string>
+    <string name="licences_intro">האפליקציה בנויה עם ספריות הקוד הפתוח האלה. הרישיונות שלהן מופיעים בהמשך, באנגלית.</string>
 </resources>

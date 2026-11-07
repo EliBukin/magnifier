@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The "i" button over the camera picture: a dark disc with a white rim, visible on any page. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="@color/controls_scrim" />
+    <stroke android:width="2dp" android:color="@color/control_foreground" />
+</shape>

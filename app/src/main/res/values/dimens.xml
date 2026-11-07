@@ -3,6 +3,11 @@
     <!-- The big buttons on the permission and error panels (above the 48dp minimum, for shaky hands). -->
     <dimen name="touch_target">64dp</dimen>
 
+    <!-- The "i" (About) button at the top end corner of the camera screen, and the About screen's
+         back arrow: 56dp, like every control on the camera screen. -->
+    <dimen name="about_button">56dp</dimen>
+    <dimen name="about_button_margin">8dp</dimen>
+
     <!-- The panel. These sizes are for phones under 360dp wide (480 x 800 at hdpi is 320dp): four
          round buttons and Freeze still fit in one row. values-w360dp and values-w400dp have the
          bigger sizes. Every round button is at least 56dp across. -->

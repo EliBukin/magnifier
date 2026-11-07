@@ -577,6 +577,7 @@ class MainActivity : AppCompatActivity() {
         colourButton.setOnClickListener { setColourMode(colourMode.next(), announce = true) }
         saveButton.setOnClickListener { onSaveButton() }
         shareButton.setOnClickListener { startExport(ExportKind.SHARE) }
+        aboutButton.setOnClickListener { startActivity(Intent(this@MainActivity, AboutActivity::class.java)) }
         // The round buttons' circle is their background inset at the bottom (see RoundButton in
         // themes.xml). MaterialButton adds its insets to the padding, which would leave no room for
         // the word under the circle; the word goes there, so the bottom and side padding are 0.
@@ -1716,7 +1717,9 @@ class MainActivity : AppCompatActivity() {
         topMargins = intArrayOf(
             (messageView.layoutParams as FrameLayout.LayoutParams).topMargin,
             (photoProgress.layoutParams as FrameLayout.LayoutParams).topMargin,
+            (aboutButton.layoutParams as FrameLayout.LayoutParams).topMargin,
         )
+        val aboutEndMargin = (aboutButton.layoutParams as FrameLayout.LayoutParams).marginEnd
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
             controls.updatePadding(
@@ -1732,6 +1735,11 @@ class MainActivity : AppCompatActivity() {
             )
             messageView.updateLayoutParams<FrameLayout.LayoutParams> { topMargin = topMargins[0] + bars.top }
             photoProgress.updateLayoutParams<FrameLayout.LayoutParams> { topMargin = topMargins[1] + bars.top }
+            val endBar = if (root.layoutDirection == View.LAYOUT_DIRECTION_RTL) bars.left else bars.right
+            aboutButton.updateLayoutParams<FrameLayout.LayoutParams> {
+                topMargin = topMargins[2] + bars.top
+                marginEnd = aboutEndMargin + endBar
+            }
             insets
         }
     }
