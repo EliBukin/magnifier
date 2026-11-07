@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.provider.Settings
 import android.view.KeyEvent
 import android.view.View
@@ -163,6 +164,7 @@ class MainActivityTest {
         val activity = launch().get()
         val labels = mapOf(
             R.id.previewView to "Camera picture. Tap to focus there and lock it.",
+            R.id.frozenView to "Frozen picture. Pinch or double tap to zoom, drag to move around.",
             R.id.lightButton to "Light",
             R.id.zoomSlider to "Zoom",
             R.id.zoomIn to "Zoom in",
@@ -171,41 +173,86 @@ class MainActivityTest {
             R.id.focusSlider to "Focus distance",
             R.id.focusNear to "Focus nearer",
             R.id.focusFar to "Focus farther",
+            R.id.colourButton to "Colours",
+            R.id.brightnessSlider to "Brightness",
+            R.id.brightnessDown to "Darker",
+            R.id.brightnessUp to "Lighter",
+            R.id.saveButton to "Save the whole picture",
+            R.id.shareButton to "Share the whole picture",
         )
         for ((id, label) in labels) {
             assertEquals(label, activity.findViewById<View>(id).contentDescription?.toString())
         }
-        val retry = activity.findViewById<TextView>(R.id.errorRetry)
-        assertEquals("Try again", retry.text.toString())
+        // Buttons whose text is their label.
+        val texts = mapOf(R.id.freezeButton to "Freeze", R.id.tabBrightness to "Brightness", R.id.tabFocus to "Focus", R.id.errorRetry to "Try again")
+        for ((id, text) in texts) assertEquals(text, activity.text(id))
+        // No camera yet: the zoom tab says what it is.
+        assertEquals("Zoom", activity.text(R.id.tabZoom))
     }
 
     @Test
-    fun touchTargetsAreAtLeast56dp() {
+    fun touchTargetsAreAtLeast56dpInEveryRowAndMode() {
         shadowOf(app).grantPermissions(Manifest.permission.CAMERA)
         val activity = launch().get()
-        val density = activity.resources.displayMetrics.density
         activity.showFocusSlider()
-        val buttons = listOf(R.id.lightButton, R.id.focusButton, R.id.zoomIn, R.id.zoomOut, R.id.focusNear, R.id.focusFar)
-        for (id in buttons + listOf(R.id.zoomSlider, R.id.focusSlider)) {
-            val view = activity.findViewById<View>(id)
-            assertTrue("height of ${activity.resources.getResourceEntryName(id)}", view.height / density >= 56f)
+        val tabs = listOf(R.id.tabZoom, R.id.tabBrightness, R.id.tabFocus)
+        val live = listOf(R.id.colourButton, R.id.lightButton, R.id.freezeButton, R.id.focusButton)
+        val rows = mapOf(
+            R.id.tabZoom to listOf(R.id.zoomOut, R.id.zoomSlider, R.id.zoomIn),
+            R.id.tabBrightness to listOf(R.id.brightnessDown, R.id.brightnessSlider, R.id.brightnessUp),
+            R.id.tabFocus to listOf(R.id.focusNear, R.id.focusSlider, R.id.focusFar),
+        )
+        for ((tab, row) in rows) {
+            activity.findViewById<View>(tab).performClick()
+            activity.relayout()
+            activity.assertTargets(tabs + live + row)
         }
-        for (id in buttons) {
-            val view = activity.findViewById<MaterialButton>(id)
-            assertTrue("width of ${activity.resources.getResourceEntryName(id)}", view.width / density >= 56f)
+        activity.freezeForTest(Bitmap.createBitmap(72, 156, Bitmap.Config.ARGB_8888))
+        activity.relayout()
+        activity.assertTargets(listOf(R.id.colourButton, R.id.saveButton, R.id.freezeButton, R.id.shareButton, R.id.zoomOut, R.id.zoomSlider, R.id.zoomIn))
+    }
+
+    private fun MainActivity.assertTargets(ids: List<Int>) {
+        val density = resources.displayMetrics.density
+        for (id in ids) {
+            val view = findViewById<View>(id)
+            val name = resources.getResourceEntryName(id)
+            assertTrue("$name is showing", view.isShown)
+            assertTrue("height of $name: ${view.height / density}", view.height / density >= 56f)
+            if (view is MaterialButton) assertTrue("width of $name: ${view.width / density}", view.width / density >= 56f)
         }
-        // On a 360dp phone the zoom value still fits beside the focus and light buttons.
-        assertTrue(activity.findViewById<View>(R.id.zoomLabel).width / density >= 64f)
+    }
+
+    private fun MainActivity.relayout() {
+        findViewById<View>(R.id.root).run {
+            measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
+            layout(left, top, right, bottom)
+        }
+    }
+
+    @Test
+    fun thePanelCoversAtMostFortyPercentAndFreezeIsTheBiggestAction() {
+        shadowOf(app).grantPermissions(Manifest.permission.CAMERA)
+        val activity = launch().get()
+        activity.showFocusSlider()
+        activity.relayout()
+        val density = activity.resources.displayMetrics.density
+        val root = activity.findViewById<View>(R.id.root).height
+        val panel = activity.findViewById<View>(R.id.controls).height
+        // With a 48dp navigation bar below it, as on the A20.
+        val share = (panel + 48 * density) / root
+        assertTrue("the panel covers ${share * 100}%", share <= 0.40f)
+        val freeze = activity.findViewById<View>(R.id.freezeButton)
+        for (id in listOf(R.id.colourButton, R.id.lightButton, R.id.focusButton)) {
+            assertTrue(freeze.width > activity.findViewById<View>(id).width * 1.4f)
+        }
     }
 
     /** Pretends the camera has manual focus, so the focus row shows (Robolectric has no camera). */
     private fun MainActivity.showFocusSlider() {
         manualFocus = ManualFocus(minimumFocusDiopters = 10f, calibrated = true)
         onFocusEvent(FocusEvent.CAMERA_RESTARTED) // re-renders, staying in Auto
-        findViewById<View>(R.id.root).run {
-            measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
-            layout(left, top, right, bottom)
-        }
+        relayout()
     }
 
     private fun MainActivity.focusButtonSays(): Triple<String, String?, String?> {
@@ -222,6 +269,7 @@ class MainActivityTest {
         assertEquals(FocusMode.AUTO, activity.focusMode)
         assertEquals(Triple("Auto", "Auto", "lock the focus on the middle of the picture"), activity.focusButtonSays())
         assertFalse(activity.findViewById<View>(R.id.focusRow).isVisible)
+        assertFalse(activity.findViewById<View>(R.id.tabFocus).isVisible)
         // Without manual focus, the slider can't take over.
         activity.onFocusEvent(FocusEvent.FOCUS_SLIDER)
         assertEquals(FocusMode.AUTO, activity.focusMode)
@@ -237,7 +285,12 @@ class MainActivityTest {
         assertEquals(Triple("Locked", "Locked", "go back to auto focus"), activity.focusButtonSays())
 
         activity.showFocusSlider()
+        // The focus tab shows; its row only once it is chosen.
+        assertTrue(activity.findViewById<View>(R.id.tabFocus).isVisible)
+        assertFalse(activity.findViewById<View>(R.id.focusRow).isVisible)
+        activity.findViewById<View>(R.id.tabFocus).performClick()
         assertTrue(activity.findViewById<View>(R.id.focusRow).isVisible)
+        assertFalse(activity.findViewById<View>(R.id.zoomRow).isVisible)
         activity.onFocusEvent(FocusEvent.FOCUS_SLIDER)
         assertEquals(Triple("Manual", "Manual", "go back to auto focus"), activity.focusButtonSays())
 

@@ -75,6 +75,16 @@ object ZoomMath {
     fun pinchRatio(currentRatio: Float, scaleFactor: Float, minRatio: Float, maxRatio: Float): Float =
         (currentRatio * scaleFactor).coerceIn(minRatio, maxRatio)
 
-    /** The ratio as shown and spoken, one decimal: "3.2". */
-    fun formatRatio(ratio: Float, locale: Locale): String = String.format(locale, "%.1f", ratio)
+    /**
+     * The ratio as shown and spoken: two decimals below 2x ("1.04"), where one zoom step can be
+     * less than 0.1, and one decimal from 2x up ("3.2"), where every step is more.
+     */
+    fun formatRatio(ratio: Float, locale: Locale): String =
+        String.format(locale, if (ratio < TWO_DECIMALS_BELOW) "%.2f" else "%.1f", ratio)
+
+    /** The zoom label has two decimals below this ratio. */
+    const val TWO_DECIMALS_BELOW = 1.995f
+
+    /** A distance in metres as spoken: one decimal ("1.5"). */
+    fun formatOneDecimal(value: Float, locale: Locale): String = String.format(locale, "%.1f", value)
 }

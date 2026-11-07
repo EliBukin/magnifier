@@ -54,33 +54,65 @@ class HebrewLayoutTest {
     fun theControlsAreMirrored() {
         shadowOf(app).grantPermissions(Manifest.permission.CAMERA)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
-        // Show the focus row too, as on a phone with manual focus.
+        // Show the focus tab too, as on a phone with manual focus.
         activity.manualFocus = ManualFocus(minimumFocusDiopters = 10f, calibrated = true)
         activity.onFocusEvent(FocusEvent.CAMERA_RESTARTED)
+        relayout(activity)
+
+        fun v(id: Int) = activity.findViewById<View>(id)
+        // Start is on the right: the zoom tab, "zoom out" and the colours there; "zoom in" and the
+        // focus button on the left.
+        assertTrue(v(R.id.tabFocus).left < v(R.id.tabBrightness).left && v(R.id.tabBrightness).left < v(R.id.tabZoom).left)
+        assertTrue(v(R.id.zoomIn).left < v(R.id.zoomOut).left)
+        assertTrue(v(R.id.focusButton).left < v(R.id.freezeButton).left)
+        assertTrue(v(R.id.freezeButton).left < v(R.id.lightButton).left && v(R.id.lightButton).left < v(R.id.colourButton).left)
+        assertEquals("פנס", activity.findViewById<TextView>(R.id.lightButton).text.toString())
+        assertEquals("אוטומטי", activity.findViewById<TextView>(R.id.focusButton).text.toString())
+        assertEquals("הקפאה", activity.findViewById<TextView>(R.id.freezeButton).text.toString())
+        assertEquals("רגיל", activity.findViewById<TextView>(R.id.colourButton).text.toString())
+        assertEquals("בהירות", activity.findViewById<TextView>(R.id.tabBrightness).text.toString())
+        assertEquals("מיקוד", v(R.id.focusButton).contentDescription)
+        assertEquals("צבעים", v(R.id.colourButton).contentDescription)
+        assertEquals("הגדלה", v(R.id.zoomSlider).contentDescription)
+        screenshot(activity.window.decorView, "he-live.png")
+
+        // The focus tab's row: "near" on the right.
+        v(R.id.tabFocus).performClick()
+        relayout(activity)
+        assertTrue(v(R.id.focusFar).left < v(R.id.focusNear).left)
+        screenshot(activity.window.decorView, "he-focus.png")
+
+        // The brightness row: "darker" on the right.
+        v(R.id.tabBrightness).performClick()
+        relayout(activity)
+        assertTrue(v(R.id.brightnessUp).left < v(R.id.brightnessDown).left)
+        assertEquals("כהה יותר", v(R.id.brightnessDown).contentDescription)
+        screenshot(activity.window.decorView, "he-brightness.png")
+    }
+
+    @Test
+    fun theFrozenControlsAreMirroredToo() {
+        shadowOf(app).grantPermissions(Manifest.permission.CAMERA)
+        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+        val picture = Bitmap.createBitmap(72, 156, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF8899AA.toInt()) }
+        activity.setColourMode(ColorMode.YELLOW_ON_BLACK, announce = false)
+        activity.freezeForTest(picture)
+        relayout(activity)
+        fun v(id: Int) = activity.findViewById<View>(id)
+        assertTrue(v(R.id.shareButton).left < v(R.id.freezeButton).left && v(R.id.freezeButton).left < v(R.id.saveButton).left)
+        assertEquals("חי", activity.findViewById<TextView>(R.id.freezeButton).text.toString())
+        assertEquals("שמירה", activity.findViewById<TextView>(R.id.saveButton).text.toString())
+        assertEquals("שיתוף התמונה כולה", v(R.id.shareButton).contentDescription)
+        assertEquals("צהוב", activity.findViewById<TextView>(R.id.colourButton).text.toString())
+        // The zoom number reads left to right.
+        assertEquals("1.00×", activity.findViewById<TextView>(R.id.tabZoom).text.toString())
+        screenshot(activity.window.decorView, "he-frozen.png")
+    }
+
+    private fun relayout(activity: MainActivity) {
         val root = activity.window.decorView
         root.measure(View.MeasureSpec.makeMeasureSpec(root.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(root.height, View.MeasureSpec.EXACTLY))
         root.layout(root.left, root.top, root.right, root.bottom)
-
-        val label = activity.findViewById<View>(R.id.zoomLabel)
-        val focus = activity.findViewById<View>(R.id.focusButton)
-        val light = activity.findViewById<View>(R.id.lightButton)
-        val zoomOut = activity.findViewById<View>(R.id.zoomOut)
-        val zoomIn = activity.findViewById<View>(R.id.zoomIn)
-        val near = activity.findViewById<View>(R.id.focusNear)
-        val far = activity.findViewById<View>(R.id.focusFar)
-        // Start is on the right: the zoom value, "zoom out" and "near" there; the light, "zoom in"
-        // and "far" on the left.
-        assertTrue(light.left < focus.left && focus.left < label.left)
-        assertTrue(zoomIn.left < zoomOut.left)
-        assertTrue(far.left < near.left)
-        assertEquals("פנס", activity.findViewById<TextView>(R.id.lightButton).text.toString())
-        assertEquals("אוטומטי", activity.findViewById<TextView>(R.id.focusButton).text.toString())
-        assertEquals("מיקוד", focus.contentDescription)
-        assertEquals("הגדלה", activity.findViewById<View>(R.id.zoomSlider).contentDescription)
-        assertEquals("מרחק המיקוד", activity.findViewById<View>(R.id.focusSlider).contentDescription)
-        // The zoom value still fits on a 360dp phone.
-        assertTrue(label.width / activity.resources.displayMetrics.density >= 64f)
-        screenshot(activity.window.decorView, "he-controls.png")
     }
 
     private fun screenshot(view: View, name: String) {

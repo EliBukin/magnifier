@@ -39,6 +39,21 @@ class BackupRulesTest {
     }
 
     @Test
+    fun theBackedUpFileIsTheSettingsFile() {
+        assertEquals(setOf("include sharedpref ${MagnifierSettings.FILE}.xml"), expected)
+    }
+
+    @Test
+    fun noPictureFolderIsEverIncluded() {
+        // Saved pictures live in MediaStore and shared ones in the cache: neither may be in a backup.
+        for (rules in listOf(rules("backup_rules.xml"), rules("data_extraction_rules.xml", "cloud-backup"), rules("data_extraction_rules.xml", "device-transfer"))) {
+            for (rule in rules) {
+                assertEquals(false, rule.contains("external") || rule.contains("Pictures") || rule.contains("shared ") || rule.contains("root"))
+            }
+        }
+    }
+
+    @Test
     fun theDeviceOnlyStateIsAnotherFile() {
         assertEquals(false, expected.any { it.contains(MainActivity.STATE_PREFS) })
     }

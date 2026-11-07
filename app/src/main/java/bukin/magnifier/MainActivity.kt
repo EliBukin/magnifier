@@ -3,28 +3,40 @@ package bukin.magnifier
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Matrix
+import android.graphics.Paint
 import android.graphics.PointF
+import android.graphics.Rect
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.CaptureResult
 import android.hardware.camera2.TotalCaptureResult
+import android.media.ExifInterface
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
+import android.util.Size
 import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -43,8 +55,16 @@ import androidx.camera.core.CameraInfoUnavailableException
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.CameraState
 import androidx.camera.core.FocusMeteringAction
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.TorchState
+import androidx.camera.core.UseCaseGroup
 import androidx.camera.core.ZoomState
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -52,24 +72,37 @@ import androidx.core.content.edit
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
+import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
+import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
 import bukin.magnifier.databinding.ActivityMainBinding
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.slider.Slider
 import com.google.common.util.concurrent.ListenableFuture
+import java.io.ByteArrayInputStream
+import java.io.File
+import java.io.IOException
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * The magnifier: the rear camera full screen, with zoom (slider, pinch, volume keys, buttons),
- * focus (auto, tap to lock, and a near-to-far slider where the camera supports it) and the LED
- * light. Before the camera permission is granted, a permission screen covers it; when the camera
- * can't start, an error panel does.
+ * focus (auto, tap to lock, and a near-to-far slider where the camera supports it), the LED
+ * light, colour modes and brightness. Freeze holds a sharp photo to zoom and move around, save
+ * or share. Before the camera permission is granted, a permission screen covers it; when the
+ * camera can't start, an error panel does.
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private val statePrefs by lazy { getSharedPreferences(STATE_PREFS, MODE_PRIVATE) }
+    private val settings by lazy { MagnifierSettings(this) }
+
+    /** Photo decoding and picture export, off the main thread, one job at a time. */
+    private lateinit var worker: ExecutorService
 
     @VisibleForTesting
     internal var permissionScreen: PermissionScreen? = null
@@ -81,12 +114,18 @@ class MainActivity : AppCompatActivity() {
 
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
+    private var imageCapture: ImageCapture? = null
     private var cameraStarting = false
     private var hasFlashUnit: Boolean? = null
     private var torchState: Int? = null
     private var draggingSlider = false
     private var updatingSlider = false
     private var pendingTap: PointF? = null
+
+    /** The zoom the user last chose (CameraX linear zoom): remembered, and set again when the camera opens. */
+    @VisibleForTesting
+    internal var wantedLinearZoom = 0f
+        private set
 
     @VisibleForTesting
     internal var focusMode = FocusMode.AUTO
@@ -101,6 +140,14 @@ class MainActivity : AppCompatActivity() {
     @Volatile
     private var focusGuard: ManualFocusGuard? = null
     private val focusGuardTimeout = Runnable { checkFocusGuardTimeout() }
+
+    /** Set while a tap after manual focus waits for continuous autofocus to settle. */
+    @Volatile
+    private var afSettle: AfSettle? = null
+    private var afSettleLock: (() -> Unit)? = null
+    private val afSettleTimeout = Runnable {
+        afSettle?.let { if (it.onTimeout(SystemClock.elapsedRealtime())) onAfSettled(it) }
+    }
 
     /**
      * Set when the app leaves the screen. The camera is already closing then, so it can't take
@@ -119,9 +166,61 @@ class MainActivity : AppCompatActivity() {
     private var lastFocusSync = 0L
     private var controlsPadding = IntArray(4)
     private var panelPadding = IntArray(4)
+    private var topMargins = IntArray(2)
+
+    // ---- Colours and brightness ----------------------------------------------------------------
+
+    @VisibleForTesting
+    internal var colourMode = ColorMode.NORMAL
+        private set
+
+    /** The live brightness slider (camera exposure), or null when the camera has none. */
+    @VisibleForTesting
+    internal var exposure: Brightness.Exposure? = null
+    private var updatingBrightness = false
+
+    /** The frozen picture's brightness, -10..10 ([Brightness.gain]); 0 at every freeze. */
+    @VisibleForTesting
+    internal var frozenLevel = 0
+        private set
+
+    // ---- Freeze --------------------------------------------------------------------------------
+
+    /** A picture the frozen view can show, save and share: [rotation] stands it up. */
+    private class Picture(val bitmap: Bitmap, val rotation: Int)
+
+    @VisibleForTesting
+    internal var frozen = false
+        private set
+
+    /** Counts freezes, so a photo arriving after "Live" (or a newer freeze) is dropped. */
+    private var freezeGeneration = 0
+    private var placeholder: Bitmap? = null
+
+    /** What Save and Share use: the sharp photo, or the screen's picture if the photo failed. */
+    private var frozenPicture: Picture? = null
+    private var cameraZoomAtFreeze = 1f
+    private var freezeStartMs = 0L
+
+    /** True while a picture is being saved or shared. */
+    private var exporting = false
+    private val recycleAfterExport = mutableListOf<Bitmap>()
+
+    /** The JPEG last written for this freeze, colour mode and brightness: saved or shared again as it is. */
+    private var lastExport: Pair<ExportKey, File>? = null
+    private data class ExportKey(val freeze: Int, val mode: ColorMode, val level: Int)
+    private enum class ExportKind { SAVE, SHARE }
+    private var pendingSave = false
+
+    private val hideMessage = Runnable {
+        binding.messageView.animate().alpha(0f).setDuration(MESSAGE_FADE_MS).withEndAction { binding.messageView.isVisible = false }
+    }
 
     private val requestCamera =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { refreshPermission() }
+
+    private val requestStorage =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> onStoragePermission(granted) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(
@@ -129,15 +228,28 @@ class MainActivity : AppCompatActivity() {
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
+        worker = Executors.newSingleThreadExecutor()
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         ViewCompat.setAccessibilityHeading(binding.permissionTitle, true)
+        colourMode = settings.colourMode
+        wantedLinearZoom = settings.zoomLinear
         applyWindowInsets()
         setUpControls()
         setUpPreviewGestures()
+        binding.frozenView.onScaleChanged = { renderZoom() }
+        applyPreviewFilter()
         renderZoom()
         renderTorch()
         renderFocus()
+        renderColour()
+        renderFreeze()
+        // Pictures shared on earlier visits: the apps they went to have had them for a while now.
+        val shareDir = PictureStore.shareDir(this)
+        worker.execute {
+            val deleted = PictureStore.cleanShareDir(shareDir, System.currentTimeMillis())
+            if (deleted > 0) debugLog("deleted $deleted old shared pictures")
+        }
     }
 
     override fun onStart() {
@@ -149,7 +261,13 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         // Leaving the app ends a focus lock or manual focus: the next look starts in Auto.
         onFocusEvent(FocusEvent.LEFT_APP)
+        settings.zoomLinear = wantedLinearZoom
         super.onStop()
+    }
+
+    override fun onDestroy() {
+        worker.shutdown()
+        super.onDestroy()
     }
 
     // ---- Permission ----------------------------------------------------------------------------
@@ -223,7 +341,8 @@ class MainActivity : AppCompatActivity() {
                 return@addListener
             }
             cameraProvider = provider
-            bindCamera(provider)
+            // The view port (the part of the camera's picture the screen shows) needs the view's size.
+            binding.previewView.doOnLayout { if (camera == null && !isDestroyed) bindCamera(provider) }
         }, ContextCompat.getMainExecutor(this))
     }
 
@@ -239,31 +358,46 @@ class MainActivity : AppCompatActivity() {
         }
         val preview = buildPreview()
         preview.setSurfaceProvider(binding.previewView.surfaceProvider)
+        val capture = buildImageCapture()
+        // One view port for both: the photo then knows which part of it the screen showed, so the
+        // frozen picture starts exactly like the live one.
+        val group = UseCaseGroup.Builder().addUseCase(preview).addUseCase(capture)
+        binding.previewView.viewPort?.let { group.setViewPort(it) }
         val bound = try {
             provider.unbindAll()
-            provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview)
+            provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, group.build()).also { imageCapture = capture }
         } catch (e: Exception) {
-            debugLog("binding the camera failed", e)
-            showProblem(CameraProblem.OTHER)
-            return
+            // A camera that can't take photos beside the preview still magnifies; Freeze then
+            // holds the screen's picture.
+            debugLog("binding the camera with photos failed, trying the preview alone", e)
+            try {
+                provider.unbindAll()
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview).also { imageCapture = null }
+            } catch (e2: Exception) {
+                debugLog("binding the camera failed", e2)
+                showProblem(CameraProblem.OTHER)
+                return
+            }
         }
         camera = bound
         hasFlashUnit = bound.cameraInfo.hasFlashUnit()
         manualFocus = readManualFocus(bound.cameraInfo)
         focusGuard = manualFocus?.let { ManualFocusGuard(it.minimumFocusDiopters) }
-        debugLog("manual focus: $manualFocus")
+        debugLog("manual focus: $manualFocus; photos: ${imageCapture?.resolutionInfo?.resolution}")
         bound.cameraInfo.zoomState.observe(this) { renderZoom() }
         bound.cameraInfo.torchState.observe(this) { state ->
             torchState = state
             renderTorch()
         }
         bound.cameraInfo.cameraState.observe(this) { onCameraState(it) }
+        readExposure()
         renderZoom()
         renderTorch()
         renderFocus()
+        renderFreeze()
     }
 
-    /** The preview, with a listener that reads each frame's lens focus distance. */
+    /** The preview, with a listener that reads each frame's focus. */
     @OptIn(ExperimentalCamera2Interop::class)
     private fun buildPreview(): Preview {
         val builder = Preview.Builder()
@@ -276,6 +410,24 @@ class MainActivity : AppCompatActivity() {
         })
         return builder.build()
     }
+
+    /**
+     * Photos for Freeze: the largest 4:3 size up to about 16 megapixels (the A20's 13 MP in
+     * full), quick rather than multi-frame, and never with the flash, so the light stays as the
+     * user set it.
+     */
+    private fun buildImageCapture(): ImageCapture = ImageCapture.Builder()
+        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+        .setFlashMode(ImageCapture.FLASH_MODE_OFF)
+        .setResolutionSelector(
+            ResolutionSelector.Builder()
+                .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                .setResolutionStrategy(
+                    ResolutionStrategy(PHOTO_MAX_SIZE, ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER),
+                )
+                .build(),
+        )
+        .build()
 
     /**
      * Manual focus for the bound camera, from its characteristics (see [ManualFocus.check]);
@@ -299,12 +451,30 @@ class MainActivity : AppCompatActivity() {
             }
             state.type == CameraState.Type.OPEN -> {
                 showProblem(null)
+                val cam = camera ?: return
                 if (resetFocusOnOpen) {
                     resetFocusOnOpen = false
                     // Manual focus options outlive a camera close: clear them now it's open.
-                    if (focusMode == FocusMode.AUTO) camera?.let { backToAuto(it) }
+                    if (focusMode == FocusMode.AUTO) backToAuto(cam)
                 }
+                restoreSettings(cam)
+                readExposure()
+                renderBrightness()
+                renderFreeze()
             }
+        }
+    }
+
+    /** The remembered zoom, and the light if the user left it on. */
+    private fun restoreSettings(cam: Camera) {
+        val zoom = currentZoom()
+        if (zoom != null && ZoomMath.canZoom(zoom.minZoomRatio, zoom.maxZoomRatio) &&
+            abs(zoom.linearZoom - wantedLinearZoom) > 1e-3f
+        ) {
+            cam.cameraControl.setLinearZoom(wantedLinearZoom).logFailure("restore zoom")
+        }
+        if (settings.lightOn && hasFlashUnit == true && torchState != TorchState.ON) {
+            cam.cameraControl.enableTorch(true).logFailure("restore light")
         }
     }
 
@@ -317,15 +487,18 @@ class MainActivity : AppCompatActivity() {
             info.cameraState.removeObservers(this)
         }
         camera = null
+        imageCapture = null
         hasFlashUnit = null
         torchState = null
         manualFocus = null
         focusGuard = null
+        exposure = null
         binding.root.removeCallbacks(focusGuardTimeout)
         showProblem(null)
         renderZoom()
         renderTorch()
         renderFocus()
+        renderFreeze()
         val provider = cameraProvider
         if (provider != null) bindCamera(provider) else startCamera()
     }
@@ -339,25 +512,30 @@ class MainActivity : AppCompatActivity() {
             }
         }
         renderCameraArea()
+        if (::binding.isInitialized) renderFreezeButton()
     }
 
-    /** Shows the controls or the error panel, and keeps the screen on, only while the camera can show. */
+    /**
+     * Shows the controls or the error panel, and keeps the screen on, only while there is a
+     * picture to look at. A frozen picture stays even if the camera has a problem meanwhile; the
+     * problem shows after "Live".
+     */
     private fun renderCameraArea() {
         val granted = permissionScreen == PermissionScreen.CAMERA
-        val cameraShowing = granted && problem == null
-        binding.controls.isVisible = cameraShowing
-        binding.errorPanel.isVisible = granted && problem != null
-        if (cameraShowing) {
+        val pictureShowing = granted && (problem == null || frozen)
+        binding.controls.isVisible = pictureShowing
+        binding.errorPanel.isVisible = granted && problem != null && !frozen
+        if (pictureShowing) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 
-    /** True while the live camera is in front, with no permission or error screen over it. */
+    /** True while the live camera is in front, with no permission or error screen over it, and not frozen. */
     @VisibleForTesting
     internal fun cameraInFront(): Boolean =
-        permissionScreen == PermissionScreen.CAMERA && problem == null && camera != null && !isFinishing
+        permissionScreen == PermissionScreen.CAMERA && problem == null && camera != null && !isFinishing && !frozen
 
     private fun currentZoom(): ZoomState? = camera?.cameraInfo?.zoomState?.value
 
@@ -366,29 +544,30 @@ class MainActivity : AppCompatActivity() {
     private fun setUpControls() = with(binding) {
         permissionButton.setOnClickListener { onPermissionButton() }
         errorRetry.setOnClickListener { retryCamera() }
-        lightButton.setOnClickListener {
-            val state = TorchButtonState.from(hasFlashUnit, torchState)
-            val cam = camera ?: return@setOnClickListener
-            if (!state.enabled) return@setOnClickListener
-            val result = cam.cameraControl.enableTorch(state.tapTurnsOn)
-            result.addListener({
-                try {
-                    result.get()
-                } catch (e: Exception) {
-                    debugLog("torch change failed", e)
-                }
-            }, ContextCompat.getMainExecutor(this@MainActivity))
-        }
+        lightButton.setOnClickListener { onLightButton() }
         zoomIn.setOnClickListener { zoomBySteps(1) }
         zoomOut.setOnClickListener { zoomBySteps(-1) }
         focusButton.setOnClickListener { onFocusEvent(FocusEvent.FOCUS_BUTTON) }
+        freezeButton.setOnClickListener { if (frozen) unfreeze() else freeze() }
+        colourButton.setOnClickListener { setColourMode(colourMode.next(), announce = true) }
+        saveButton.setOnClickListener { onSaveButton() }
+        shareButton.setOnClickListener { startExport(ExportKind.SHARE) }
+        adjustGroup.addOnButtonCheckedListener { _, _, isChecked -> if (isChecked) renderAdjustRows() }
         setUpFocusSlider()
+        setUpBrightness()
 
         zoomSlider.valueFrom = 0f
         zoomSlider.valueTo = ZoomMath.SLIDER_MAX
         zoomSlider.addOnChangeListener { _, value, _ ->
             // Any change the app didn't make itself is the user's: touch, keyboard or TalkBack.
-            if (!updatingSlider) camera?.cameraControl?.setLinearZoom(ZoomMath.sliderToLinear(value))
+            if (updatingSlider) return@addOnChangeListener
+            if (frozen) {
+                frozenView.zoomTo(FrozenZoom.sliderToScale(value))
+            } else {
+                val linear = ZoomMath.sliderToLinear(value)
+                camera?.cameraControl?.setLinearZoom(linear)
+                wantedLinearZoom = linear
+            }
         }
         zoomSlider.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
             override fun onStartTrackingTouch(slider: Slider) {
@@ -402,10 +581,24 @@ class MainActivity : AppCompatActivity() {
         })
         // What TalkBack says for the slider's value: the zoom, not a percentage.
         zoomSlider.setLabelFormatter { value ->
-            val zoom = currentZoom() ?: return@setLabelFormatter ""
-            val ratio = ZoomMath.linearToRatio(ZoomMath.sliderToLinear(value), zoom.minZoomRatio, zoom.maxZoomRatio)
-            getString(R.string.zoom_spoken, ZoomMath.formatRatio(ratio, resources.configuration.locales[0]))
+            val ratio = zoomForSlider(value) ?: return@setLabelFormatter ""
+            getString(R.string.zoom_spoken, formatZoom(ratio))
         }
+    }
+
+    private fun onLightButton() {
+        val state = TorchButtonState.from(hasFlashUnit, torchState)
+        val cam = camera ?: return
+        if (!state.enabled) return
+        settings.lightOn = state.tapTurnsOn
+        val result = cam.cameraControl.enableTorch(state.tapTurnsOn)
+        result.addListener({
+            try {
+                result.get()
+            } catch (e: Exception) {
+                debugLog("torch change failed", e)
+            }
+        }, ContextCompat.getMainExecutor(this))
     }
 
     private fun setUpFocusSlider() = with(binding) {
@@ -445,42 +638,77 @@ class MainActivity : AppCompatActivity() {
             is ManualFocus.Distance.Centimetres ->
                 resources.getQuantityString(R.plurals.focus_spoken_cm, distance.cm, distance.cm)
             is ManualFocus.Distance.Metres ->
-                getString(R.string.focus_spoken_m, ZoomMath.formatRatio(distance.m, resources.configuration.locales[0]))
+                getString(R.string.focus_spoken_m, ZoomMath.formatOneDecimal(distance.m, resources.configuration.locales[0]))
             is ManualFocus.Distance.Percent -> getString(R.string.focus_spoken_percent, distance.percent)
         }
     }
 
-    private fun zoomBySteps(steps: Int) {
+    /** The −/+ buttons and the volume keys: the camera's zoom live, the picture's when frozen. */
+    @VisibleForTesting
+    internal fun zoomBySteps(steps: Int) {
+        if (frozen) {
+            val view = binding.frozenView
+            view.zoomTo(FrozenZoom.step(view.scale, steps, view.minScale, view.maxScale))
+            return
+        }
         val zoom = currentZoom() ?: return
         if (!ZoomMath.canZoom(zoom.minZoomRatio, zoom.maxZoomRatio)) return
         val target = ZoomMath.stepLinear(zoom.linearZoom, steps)
         camera?.cameraControl?.setLinearZoom(target)
+        wantedLinearZoom = target
+    }
+
+    private fun formatZoom(ratio: Float): String = ZoomMath.formatRatio(ratio, resources.configuration.locales[0])
+
+    /** The zoom a slider position stands for, live or frozen; null without a camera. */
+    private fun zoomForSlider(value: Float): Float? {
+        if (frozen) {
+            val view = binding.frozenView
+            return cameraZoomAtFreeze * FrozenZoom.sliderToScale(value).coerceIn(view.minScale, view.maxScale)
+        }
+        val zoom = currentZoom() ?: return null
+        return ZoomMath.linearToRatio(ZoomMath.sliderToLinear(value), zoom.minZoomRatio, zoom.maxZoomRatio)
     }
 
     private fun renderZoom() = with(binding) {
+        if (frozen) {
+            val view = frozenView
+            zoomSlider.isEnabled = true
+            zoomIn.isEnabled = view.scale < view.maxScale * 0.999f
+            zoomOut.isEnabled = view.scale > view.minScale * 1.001f
+            if (!draggingSlider) setSlider(zoomSlider, FrozenZoom.scaleToSlider(view.scale))
+            showZoomValue(formatZoom(cameraZoomAtFreeze * view.scale))
+            return@with
+        }
         val zoom = currentZoom()
         val canZoom = zoom != null && ZoomMath.canZoom(zoom.minZoomRatio, zoom.maxZoomRatio)
         zoomSlider.isEnabled = canZoom
         zoomIn.isEnabled = canZoom && zoom.linearZoom < 1f
         zoomOut.isEnabled = canZoom && zoom.linearZoom > 0f
         if (zoom == null) {
-            zoomLabel.text = ""
-            zoomLabel.contentDescription = null
+            tabZoom.setText(R.string.zoom_slider_desc)
+            tabZoom.contentDescription = null
             return@with
         }
-        if (!draggingSlider) {
-            updatingSlider = true
-            zoomSlider.value = ZoomMath.linearToSlider(zoom.linearZoom)
-            updatingSlider = false
-        }
+        if (!draggingSlider) setSlider(zoomSlider, ZoomMath.linearToSlider(zoom.linearZoom))
         if (canZoom) {
-            val ratio = ZoomMath.formatRatio(zoom.zoomRatio, resources.configuration.locales[0])
-            zoomLabel.text = getString(R.string.zoom_label, ratio)
-            zoomLabel.contentDescription = getString(R.string.zoom_spoken, ratio)
+            showZoomValue(formatZoom(zoom.zoomRatio))
         } else {
-            zoomLabel.setText(R.string.zoom_unavailable)
-            zoomLabel.contentDescription = null
+            tabZoom.setText(R.string.zoom_unavailable)
+            tabZoom.contentDescription = null
         }
+    }
+
+    /** The zoom tab shows the zoom ("1.25×"); TalkBack says "Zoom 1.25 times". */
+    private fun showZoomValue(ratio: String) = with(binding.tabZoom) {
+        text = getString(R.string.zoom_label, ratio)
+        contentDescription = getString(R.string.zoom_spoken, ratio)
+    }
+
+    private fun setSlider(slider: Slider, value: Float) {
+        updatingSlider = true
+        slider.value = value.coerceIn(slider.valueFrom, slider.valueTo)
+        updatingSlider = false
     }
 
     private fun renderTorch() = with(binding.lightButton) {
@@ -497,7 +725,7 @@ class MainActivity : AppCompatActivity() {
         alpha = if (state.enabled) 1f else DISABLED_ALPHA
     }
 
-    /** The light and focus buttons: accent colour when they're not in their default state. */
+    /** The light, focus and colour buttons: accent colour when they're not in their default state. */
     private fun paintStateButton(button: MaterialButton, highlighted: Boolean) {
         val context = button.context
         val background = ContextCompat.getColor(context, if (highlighted) R.color.accent else R.color.control_background)
@@ -519,11 +747,526 @@ class MainActivity : AppCompatActivity() {
         )
         paintStateButton(focusButton, mode.highlighted)
         focusButton.alpha = if (ready) 1f else DISABLED_ALPHA
-        focusRow.isVisible = manualFocus != null
         focusSlider.isEnabled = ready
         focusNear.isEnabled = ready && focusSlider.value > 0f
         focusFar.isEnabled = ready && focusSlider.value < ManualFocus.SLIDER_MAX
+        renderAdjustRows()
     }
+
+    /**
+     * The adjust tabs and the one slider row they choose. Focus only on phones with manual
+     * focus, and not while frozen; if it goes, zoom is chosen.
+     */
+    private fun renderAdjustRows() = with(binding) {
+        val focusTab = manualFocus != null && !frozen
+        tabFocus.isVisible = focusTab
+        if (!focusTab && adjustGroup.checkedButtonId == R.id.tabFocus) adjustGroup.check(R.id.tabZoom)
+        val checked = adjustGroup.checkedButtonId
+        zoomRow.isVisible = checked == R.id.tabZoom || checked == View.NO_ID
+        brightnessRow.isVisible = checked == R.id.tabBrightness
+        focusRow.isVisible = checked == R.id.tabFocus
+    }
+
+    // ---- Colours -------------------------------------------------------------------------------
+
+    @VisibleForTesting
+    internal fun setColourMode(mode: ColorMode, announce: Boolean) {
+        colourMode = mode
+        settings.colourMode = mode
+        applyPreviewFilter()
+        applyFrozenFilter()
+        renderColour()
+        // TalkBack hears the button's new state; sighted users see the name for a moment.
+        if (announce) showMessage(getString(mode.label), forTalkBack = false)
+    }
+
+    /**
+     * The live picture, through a hardware layer on the preview's TextureView. The controls are
+     * other views, never filtered.
+     */
+    private fun applyPreviewFilter() {
+        val view = binding.previewView
+        if (colourMode == ColorMode.NORMAL) {
+            view.setLayerType(View.LAYER_TYPE_NONE, null)
+        } else {
+            view.setLayerType(View.LAYER_TYPE_HARDWARE, Paint().apply { colorFilter = ColorMatrixColorFilter(colourMode.matrix()) })
+        }
+    }
+
+    /** The colour mode with the frozen brightness: for the frozen picture and what is saved or shared. */
+    @VisibleForTesting
+    internal fun pictureMatrix(): FloatArray = colourMode.matrix(Brightness.gain(frozenLevel))
+
+    private fun applyFrozenFilter() {
+        val plain = colourMode == ColorMode.NORMAL && frozenLevel == 0
+        binding.frozenView.setPictureFilter(if (plain) null else ColorMatrixColorFilter(ColorMatrix(pictureMatrix())))
+    }
+
+    private fun renderColour() = with(binding.colourButton) {
+        setText(colourMode.shortLabel)
+        ViewCompat.setStateDescription(this, getString(colourMode.label))
+        ViewCompat.replaceAccessibilityAction(this, AccessibilityActionCompat.ACTION_CLICK, getString(R.string.colour_action), null)
+        paintStateButton(this, highlighted = colourMode != ColorMode.NORMAL)
+    }
+
+    // ---- Brightness ----------------------------------------------------------------------------
+
+    private fun setUpBrightness() = with(binding) {
+        brightnessSlider.addOnChangeListener { _, value, _ ->
+            if (updatingBrightness) return@addOnChangeListener
+            if (frozen) {
+                frozenLevel = value.roundToInt()
+                applyFrozenFilter()
+            } else {
+                val range = exposure ?: return@addOnChangeListener
+                camera?.cameraControl?.setExposureCompensationIndex(range.indexFor(value))?.logFailure("exposure")
+            }
+            renderBrightnessButtons()
+        }
+        brightnessDown.setOnClickListener { stepBrightness(-1) }
+        brightnessUp.setOnClickListener { stepBrightness(1) }
+        brightnessSlider.setLabelFormatter { value -> spokenBrightness(value) }
+    }
+
+    private fun stepBrightness(steps: Int) = with(binding.brightnessSlider) {
+        val next = if (frozen) {
+            (value.roundToInt() + steps).coerceIn(-Brightness.FROZEN_LEVELS, Brightness.FROZEN_LEVELS).toFloat()
+        } else {
+            val range = exposure ?: return@with
+            range.stepFrom(value.roundToInt(), steps).toFloat()
+        }
+        if (next != value) value = next
+    }
+
+    /** "Normal", "3 steps lighter", "2 steps darker": steps of the slider from its middle. */
+    private fun spokenBrightness(value: Float): String {
+        val level = if (frozen) value.roundToInt() else exposure?.level(value.roundToInt()) ?: 0
+        return when {
+            level > 0 -> resources.getQuantityString(R.plurals.brightness_lighter, level, level)
+            level < 0 -> resources.getQuantityString(R.plurals.brightness_darker, -level, -level)
+            else -> getString(R.string.brightness_normal)
+        }
+    }
+
+    /** The camera's exposure-compensation range, for the live slider. */
+    private fun readExposure() {
+        val state = camera?.cameraInfo?.exposureState
+        exposure = if (state != null && state.isExposureCompensationSupported) {
+            Brightness.Exposure.of(state.exposureCompensationRange.lower, state.exposureCompensationRange.upper)
+        } else {
+            null
+        }
+    }
+
+    /**
+     * The brightness slider: the camera's exposure live (hidden, with the reason, on a camera
+     * without it), the picture's brightness when frozen.
+     */
+    private fun renderBrightness() = with(binding) {
+        val range = exposure
+        val unavailable = !frozen && range == null && camera != null
+        brightnessDown.isVisible = !unavailable
+        brightnessSlider.isVisible = !unavailable
+        brightnessUp.isVisible = !unavailable
+        brightnessUnavailable.isVisible = unavailable
+        updatingBrightness = true
+        if (frozen) {
+            setBrightnessRange(-Brightness.FROZEN_LEVELS, Brightness.FROZEN_LEVELS, 1, frozenLevel.toFloat())
+            brightnessSlider.isEnabled = true
+        } else if (range != null) {
+            val index = camera?.cameraInfo?.exposureState?.exposureCompensationIndex ?: 0
+            setBrightnessRange(range.from, range.to, range.step, range.valueFor(index))
+            brightnessSlider.isEnabled = true
+        } else {
+            setBrightnessRange(-Brightness.FROZEN_LEVELS, Brightness.FROZEN_LEVELS, 1, 0f)
+            brightnessSlider.isEnabled = false
+        }
+        updatingBrightness = false
+        renderBrightnessButtons()
+    }
+
+    private fun setBrightnessRange(from: Int, to: Int, step: Int, value: Float) = with(binding.brightnessSlider) {
+        // The slider checks these together when it next draws; all four change here at once.
+        stepSize = step.toFloat()
+        valueFrom = from.toFloat()
+        valueTo = to.toFloat()
+        this.value = value
+    }
+
+    private fun renderBrightnessButtons() = with(binding) {
+        val slider = brightnessSlider
+        val usable = slider.isEnabled
+        brightnessDown.isEnabled = usable && slider.value > slider.valueFrom
+        brightnessUp.isEnabled = usable && slider.value < slider.valueTo
+    }
+
+    // ---- Freeze --------------------------------------------------------------------------------
+
+    /** Freezes the picture: the screen's picture at once, then the camera's sharp photo in its place. */
+    private fun freeze() {
+        if (!cameraInFront()) return
+        val id = ++freezeGeneration
+        frozen = true
+        freezeStartMs = SystemClock.elapsedRealtime()
+        cameraZoomAtFreeze = currentZoom()?.zoomRatio ?: 1f
+        frozenLevel = 0
+        lastExport = null
+        frozenPicture = null
+        // The photo first, so it is of the same moment; then the screen's picture to show meanwhile.
+        imageCapture?.let { takePhoto(it, id, cameraZoomAtFreeze) }
+        val shot = try {
+            binding.previewView.bitmap
+        } catch (e: OutOfMemoryError) {
+            Log.w(TAG, "no memory for the screen's picture", e)
+            null
+        }
+        val shownMs = SystemClock.elapsedRealtime() - freezeStartMs
+        if (shot != null) {
+            placeholder = shot
+            showWholeBitmap(shot, lowestScale = 1f)
+            // With no photo coming, the screen's picture is the frozen picture.
+            if (imageCapture == null) frozenPicture = Picture(shot, 0)
+        } else if (imageCapture == null) {
+            frozen = false
+            showMessage(getString(R.string.photo_failed), forTalkBack = true)
+            renderFreeze()
+            return
+        }
+        Log.i(TAG, "freeze $id: screen picture ${shot?.width}x${shot?.height} shown after $shownMs ms")
+        applyFrozenFilter()
+        renderCameraArea()
+        renderFreeze()
+    }
+
+    /** Shows [bitmap] filling the frozen view, as the screen showed it. */
+    private fun showWholeBitmap(bitmap: Bitmap, lowestScale: Float) {
+        val view = binding.frozenView
+        val w = bitmap.width.toFloat()
+        val h = bitmap.height.toFloat()
+        val transform = PhotoDecode.baseTransform(w, h, 0, Box(0f, 0f, w, h), view.width.toFloat(), view.height.toFloat())
+        view.show(bitmap, transform, lowestScale, keepView = false)
+    }
+
+    private fun takePhoto(capture: ImageCapture, id: Int, zoomRatio: Float) {
+        capture.takePicture(worker, object : ImageCapture.OnImageCapturedCallback() {
+            override fun onCaptureSuccess(image: ImageProxy) {
+                val capturedMs = SystemClock.elapsedRealtime()
+                val decoded = try {
+                    decodePhoto(image, zoomRatio)
+                } catch (e: Throwable) {
+                    // Out of memory included: Freeze keeps the screen's picture instead.
+                    Log.w(TAG, "the photo couldn't be decoded", e)
+                    null
+                }
+                val decodedMs = SystemClock.elapsedRealtime()
+                runOnUiThread {
+                    if (decoded == null) onPhotoFailed(id) else onPhoto(id, decoded.first, decoded.second, capturedMs, decodedMs)
+                }
+            }
+
+            override fun onError(exception: ImageCaptureException) {
+                Log.w(TAG, "the photo failed (${exception.imageCaptureError})", exception)
+                runOnUiThread { onPhotoFailed(id) }
+            }
+        })
+    }
+
+    /**
+     * The photo's pixels (fewer at high zoom, see [PhotoDecode.sampleSize]), its rotation, and
+     * where the screen was in it. Closes [image] as soon as the bytes are copied.
+     */
+    private fun decodePhoto(image: ImageProxy, zoomRatio: Float): Pair<Picture, Box> {
+        val bytes: ByteArray
+        val imageW: Int
+        val imageH: Int
+        val crop: Rect
+        val cameraXRotation: Int
+        try {
+            val buffer = image.planes[0].buffer
+            bytes = ByteArray(buffer.remaining()).also { buffer.get(it) }
+            imageW = image.width
+            imageH = image.height
+            crop = Rect(image.cropRect)
+            cameraXRotation = image.imageInfo.rotationDegrees
+        } finally {
+            image.close()
+        }
+        val exif = try {
+            ExifInterface(ByteArrayInputStream(bytes)).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED)
+        } catch (e: IOException) {
+            debugLog("no EXIF in the photo", e)
+            ExifInterface.ORIENTATION_UNDEFINED
+        }
+        val rotation = PhotoDecode.uprightRotation(PhotoDecode.exifDegrees(exif), cameraXRotation)
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = PhotoDecode.sampleSize(zoomRatio)
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: throw IOException("not a JPEG")
+        // The crop is in the image's pixels; the bitmap may be smaller (sampled). If the camera
+        // turned the pixels itself and the shapes don't match, the whole photo stands in.
+        val sameShape = (bitmap.width >= bitmap.height) == (imageW >= imageH)
+        val k = bitmap.width / imageW.toFloat()
+        val box = if (sameShape && !crop.isEmpty) {
+            Box(crop.left * k, crop.top * k, crop.right * k, crop.bottom * k)
+        } else {
+            Box(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat())
+        }
+        Log.i(
+            TAG,
+            "photo ${imageW}x$imageH (${bytes.size / 1024} KB JPEG), crop $crop, rotation CameraX $cameraXRotation / EXIF $exif" +
+                " -> $rotation; decoded ${bitmap.width}x${bitmap.height} (sample ${options.inSampleSize})",
+        )
+        return Picture(bitmap, rotation) to box
+    }
+
+    private fun onPhoto(id: Int, picture: Picture, crop: Box, capturedMs: Long, decodedMs: Long) {
+        if (id != freezeGeneration || !frozen) {
+            picture.bitmap.recycle()
+            return
+        }
+        val view = binding.frozenView
+        val bitmap = picture.bitmap
+        val transform = PhotoDecode.baseTransform(
+            bitmap.width.toFloat(), bitmap.height.toFloat(), picture.rotation, crop, view.width.toFloat(), view.height.toFloat(),
+        )
+        val content = transform.mapBox(bitmap.width.toFloat(), bitmap.height.toFloat())
+        val lowest = FrozenZoom.minScale(content.width, content.height, view.width.toFloat(), view.height.toFloat())
+        val old = placeholder
+        view.show(bitmap, transform, lowest, keepView = old != null)
+        placeholder = null
+        frozenPicture = picture
+        old?.let { recycleLater(it) }
+        val now = SystemClock.elapsedRealtime()
+        Log.i(
+            TAG,
+            "freeze $id: photo taken ${capturedMs - freezeStartMs} ms, decoded ${decodedMs - freezeStartMs} ms," +
+                " shown ${now - freezeStartMs} ms after the tap",
+        )
+        renderFreeze()
+    }
+
+    private fun onPhotoFailed(id: Int) {
+        if (id != freezeGeneration || !frozen) return
+        val shot = placeholder
+        if (shot == null) {
+            unfreeze()
+        } else {
+            frozenPicture = Picture(shot, 0)
+        }
+        showMessage(getString(R.string.photo_failed), forTalkBack = true)
+        renderFreeze()
+    }
+
+    /** Back to the live picture. The frozen bitmaps are freed once nothing draws or saves them. */
+    private fun unfreeze() {
+        if (!frozen) return
+        frozen = false
+        freezeGeneration++
+        val old = listOfNotNull(placeholder, frozenPicture?.bitmap).distinct()
+        placeholder = null
+        frozenPicture = null
+        lastExport = null
+        pendingSave = false
+        binding.frozenView.clear()
+        old.forEach { recycleLater(it) }
+        renderCameraArea()
+        renderFreeze()
+    }
+
+    private fun recycleLater(bitmap: Bitmap) {
+        if (exporting) {
+            recycleAfterExport += bitmap
+            return
+        }
+        // After the next frame, which no longer draws it.
+        binding.root.postOnAnimation { binding.root.post { if (bitmap !== binding.frozenView.bitmap) bitmap.recycle() } }
+    }
+
+    /** The parts that change between live and frozen. */
+    private fun renderFreeze() = with(binding) {
+        val ready = frozenPicture != null
+        frozenView.isVisible = frozen
+        photoProgress.isVisible = frozen && !ready
+        previewView.importantForAccessibility =
+            if (frozen) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        lightButton.isVisible = !frozen
+        focusButton.isVisible = !frozen
+        saveButton.isVisible = frozen
+        shareButton.isVisible = frozen
+        for (button in listOf(saveButton, shareButton)) {
+            button.isEnabled = frozen && ready && !exporting
+            button.alpha = if (button.isEnabled) 1f else DISABLED_ALPHA
+        }
+        renderFreezeButton()
+        renderAdjustRows()
+        renderZoom()
+        renderBrightness()
+    }
+
+    private fun renderFreezeButton() = with(binding.freezeButton) {
+        setText(if (frozen) R.string.live_button else R.string.freeze_button)
+        setIconResource(if (frozen) R.drawable.ic_live else R.drawable.ic_freeze)
+        isEnabled = frozen || cameraInFront()
+        alpha = if (isEnabled) 1f else DISABLED_ALPHA
+        ViewCompat.setStateDescription(this, if (frozen) getString(R.string.frozen_state) else null)
+        ViewCompat.replaceAccessibilityAction(
+            this, AccessibilityActionCompat.ACTION_CLICK,
+            getString(if (frozen) R.string.live_action else R.string.freeze_action), null,
+        )
+    }
+
+    // ---- Save and share ------------------------------------------------------------------------
+
+    /** Save: on Android 9 and older it asks for the storage permission first (the only time it is asked). */
+    @VisibleForTesting
+    internal fun onSaveButton() {
+        val permission = Manifest.permission.WRITE_EXTERNAL_STORAGE
+        if (PictureStore.needsWritePermission() &&
+            ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingSave = true
+            requestStorage.launch(permission)
+            return
+        }
+        startExport(ExportKind.SAVE)
+    }
+
+    private fun onStoragePermission(granted: Boolean) {
+        val wanted = pendingSave
+        pendingSave = false
+        if (granted) {
+            if (wanted) startExport(ExportKind.SAVE)
+            return
+        }
+        val canAskAgain = ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        showMessage(getString(if (canAskAgain) R.string.save_permission_denied else R.string.save_permission_blocked), forTalkBack = true)
+    }
+
+    /**
+     * Saves or shares the whole frozen picture (not only the part zoomed into), with the colour
+     * mode and brightness the user sees.
+     */
+    private fun startExport(kind: ExportKind) {
+        val picture = frozenPicture ?: return
+        if (!frozen || exporting) return
+        val key = ExportKey(freezeGeneration, colourMode, frozenLevel)
+        val reuse = lastExport?.takeIf { it.first == key }?.second
+        val matrix = pictureMatrix()
+        val now = System.currentTimeMillis()
+        val shareDir = PictureStore.shareDir(this)
+        exporting = true
+        renderFreeze()
+        worker.execute {
+            val result = runCatching {
+                val file = reuse?.takeIf { it.exists() } ?: renderJpeg(picture, matrix, File(shareDir, PictureStore.fileName(now)))
+                if (kind == ExportKind.SAVE) {
+                    val uri = PictureStore.save(contentResolver, file, file.name, now)
+                    Log.i(TAG, "saved $uri (${file.length() / 1024} KB)")
+                }
+                file
+            }
+            runOnUiThread { onExportDone(kind, key, result) }
+        }
+    }
+
+    /** The picture stood up, through [matrix], as a JPEG. Runs on the worker thread. */
+    private fun renderJpeg(picture: Picture, matrix: FloatArray, file: File): File {
+        val source = picture.bitmap
+        val (w, h) = PhotoDecode.uprightSize(source.width, source.height, picture.rotation)
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        try {
+            val turn = Matrix().apply {
+                setValues(PhotoDecode.rotation(source.width.toFloat(), source.height.toFloat(), picture.rotation).values())
+            }
+            val paint = Paint(Paint.FILTER_BITMAP_FLAG).apply { colorFilter = ColorMatrixColorFilter(ColorMatrix(matrix)) }
+            Canvas(out).drawBitmap(source, turn, paint)
+            file.parentFile?.mkdirs()
+            file.outputStream().buffered().use {
+                if (!out.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it)) throw IOException("JPEG failed")
+            }
+        } finally {
+            out.recycle()
+        }
+        Log.i(TAG, "picture ${w}x$h written to ${file.name} (${file.length() / 1024} KB)")
+        return file
+    }
+
+    private fun onExportDone(kind: ExportKind, key: ExportKey, result: Result<File>) {
+        exporting = false
+        recycleAfterExport.forEach { recycleLater(it) }
+        recycleAfterExport.clear()
+        renderFreeze()
+        val file = result.getOrElse { e ->
+            Log.w(TAG, "${kind.name.lowercase()} failed", e)
+            showMessage(getString(if (kind == ExportKind.SAVE) R.string.save_failed else R.string.share_failed), forTalkBack = true)
+            return
+        }
+        if (key.freeze == freezeGeneration) lastExport = key to file
+        when (kind) {
+            ExportKind.SAVE -> showMessage(getString(R.string.saved_message), forTalkBack = true)
+            ExportKind.SHARE -> openShareSheet(file)
+        }
+    }
+
+    private fun openShareSheet(file: File) {
+        val uri = try {
+            PictureStore.shareUri(this, file)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "can't share $file", e)
+            showMessage(getString(R.string.share_failed), forTalkBack = true)
+            return
+        }
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = PictureStore.MIME_TYPE
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newRawUri(null, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            startActivity(Intent.createChooser(send, getString(R.string.share_chooser_title)))
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "no share sheet", e)
+            showMessage(getString(R.string.share_failed), forTalkBack = true)
+        }
+    }
+
+    // ---- Messages ------------------------------------------------------------------------------
+
+    /**
+     * A short message at the top, for a few seconds. [forTalkBack]: TalkBack reads it too (not
+     * for the colour mode, which TalkBack already hears as the button's new state).
+     */
+    private fun showMessage(text: String, forTalkBack: Boolean) = with(binding.messageView) {
+        removeCallbacks(hideMessage)
+        animate().cancel()
+        accessibilityLiveRegion = if (forTalkBack) View.ACCESSIBILITY_LIVE_REGION_POLITE else View.ACCESSIBILITY_LIVE_REGION_NONE
+        importantForAccessibility = if (forTalkBack) View.IMPORTANT_FOR_ACCESSIBILITY_YES else View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        this.text = text
+        alpha = 1f
+        isVisible = true
+        postDelayed(hideMessage, if (forTalkBack) LONG_MESSAGE_MS else SHORT_MESSAGE_MS)
+    }
+
+    @VisibleForTesting
+    internal fun messageShown(): String? = binding.messageView.takeIf { it.isVisible }?.text?.toString()
+
+    /** Unit tests: freezes on [bitmap] as if it were the camera's photo (Robolectric has no camera). */
+    @VisibleForTesting
+    internal fun freezeForTest(bitmap: Bitmap) {
+        freezeGeneration++
+        frozen = true
+        frozenLevel = 0
+        cameraZoomAtFreeze = 1f
+        showWholeBitmap(bitmap, lowestScale = FrozenZoom.LOW)
+        frozenPicture = Picture(bitmap, 0)
+        applyFrozenFilter()
+        renderCameraArea()
+        renderFreeze()
+    }
+
+    @VisibleForTesting
+    internal fun unfreezeForTest() = unfreeze()
 
     // ---- Preview gestures: pinch to zoom, tap to focus -----------------------------------------
 
@@ -532,9 +1275,9 @@ class MainActivity : AppCompatActivity() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 val zoom = currentZoom() ?: return true
                 if (!ZoomMath.canZoom(zoom.minZoomRatio, zoom.maxZoomRatio)) return true
-                camera?.cameraControl?.setZoomRatio(
-                    ZoomMath.pinchRatio(zoom.zoomRatio, detector.scaleFactor, zoom.minZoomRatio, zoom.maxZoomRatio),
-                )
+                val ratio = ZoomMath.pinchRatio(zoom.zoomRatio, detector.scaleFactor, zoom.minZoomRatio, zoom.maxZoomRatio)
+                camera?.cameraControl?.setZoomRatio(ratio)
+                wantedLinearZoom = ZoomMath.ratioToLinear(ratio, zoom.minZoomRatio, zoom.maxZoomRatio)
                 return true
             }
         })
@@ -571,6 +1314,7 @@ class MainActivity : AppCompatActivity() {
         val new = old.next(event, manualSupported = manualFocus != null)
         focusMode = new
         val generation = ++focusGeneration
+        cancelAfSettle()
         if (event == FocusEvent.LEFT_APP) resetFocusOnOpen = true
         // Leaving Manual before the check has a verdict: no verdict, check again next time.
         if (old == FocusMode.MANUAL && new != FocusMode.MANUAL) {
@@ -583,10 +1327,12 @@ class MainActivity : AppCompatActivity() {
                 FocusMode.AUTO -> backToAuto(cam)
                 FocusMode.LOCKED -> {
                     val point = at ?: PointF(binding.previewView.width / 2f, binding.previewView.height / 2f)
-                    // Manual focus's AF_MODE_OFF would override the tap's autofocus: clear it first.
                     if (old == FocusMode.MANUAL) {
+                        // Manual focus's AF_MODE_OFF would override the tap's autofocus: clear it,
+                        // let continuous autofocus bring the lens near the subject, then lock.
+                        val tap = if (cameraInFront()) binding.focusRing.show(point.x, point.y) else 0
                         clearManualFocus(cam).addListener({
-                            if (generation == focusGeneration) lockFocusAt(cam, point)
+                            if (generation == focusGeneration) waitForAfThenLock(generation) { lockFocusAt(cam, point, tap) }
                         }, ContextCompat.getMainExecutor(this))
                     } else {
                         lockFocusAt(cam, point)
@@ -602,6 +1348,32 @@ class MainActivity : AppCompatActivity() {
         renderFocus()
     }
 
+    /** Runs [lock] once continuous autofocus has settled (see [AfSettle]), or after its timeout. */
+    private fun waitForAfThenLock(generation: Int, lock: () -> Unit) {
+        val settle = AfSettle(SystemClock.elapsedRealtime())
+        afSettleLock = { if (generation == focusGeneration) lock() }
+        afSettle = settle
+        binding.root.removeCallbacks(afSettleTimeout)
+        binding.root.postDelayed(afSettleTimeout, AfSettle.TIMEOUT_MS + AF_SETTLE_SLACK_MS)
+    }
+
+    private fun onAfSettled(settle: AfSettle) {
+        if (settle !== afSettle) return
+        afSettle = null
+        binding.root.removeCallbacks(afSettleTimeout)
+        debugLog("autofocus before the lock: ${settle.outcome}")
+        val lock = afSettleLock
+        afSettleLock = null
+        lock?.invoke()
+    }
+
+    private fun cancelAfSettle() {
+        afSettle?.cancel()
+        afSettle = null
+        afSettleLock = null
+        if (::binding.isInitialized) binding.root.removeCallbacks(afSettleTimeout)
+    }
+
     /** Continuous autofocus again: no tap lock, no manual distance. */
     private fun backToAuto(cam: Camera) {
         // Both always: the camera ignores what isn't set, and LEFT_APP may come while it closes.
@@ -609,14 +1381,14 @@ class MainActivity : AppCompatActivity() {
         cam.cameraControl.cancelFocusAndMetering().logFailure("cancel focus")
     }
 
-    /** Focus and meter at [x], [y] once, then keep the lens there: no auto-cancel. */
-    private fun lockFocusAt(cam: Camera, point: PointF) {
+    /** Focus and meter at [point] once, then keep the lens there: no auto-cancel. */
+    private fun lockFocusAt(cam: Camera, point: PointF, ringTap: Int = 0) {
         if (!cameraInFront()) return
         val meteringPoint = binding.previewView.meteringPointFactory.createPoint(point.x, point.y)
         val action = FocusMeteringAction.Builder(
             meteringPoint, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE,
         ).disableAutoCancel().build()
-        val tap = binding.focusRing.show(point.x, point.y)
+        val tap = if (ringTap != 0) ringTap else binding.focusRing.show(point.x, point.y)
         val result = cam.cameraControl.startFocusAndMetering(action)
         result.addListener({
             val focused = try {
@@ -673,6 +1445,15 @@ class MainActivity : AppCompatActivity() {
      * autofocus put the lens, so taking it over doesn't jump the focus.
      */
     private fun onFrameResult(result: TotalCaptureResult) {
+        val settle = afSettle
+        if (settle != null && settle.onFrame(
+                result.get(CaptureResult.CONTROL_AF_MODE),
+                result.get(CaptureResult.CONTROL_AF_STATE),
+                SystemClock.elapsedRealtime(),
+            )
+        ) {
+            binding.root.post { onAfSettled(settle) }
+        }
         val guard = focusGuard
         if (guard != null && guard.state == ManualFocusGuard.State.CHECKING) {
             val verdict = guard.onResult(
@@ -722,6 +1503,11 @@ class MainActivity : AppCompatActivity() {
     // ---- Volume keys ---------------------------------------------------------------------------
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // Frozen: the keys zoom the frozen picture, and are taken at the ends too.
+        if (frozenKeysZoom(keyCode)) {
+            zoomBySteps(VolumeKeyZoom.stepsFor(keyCode))
+            return true
+        }
         val zoom = currentZoom()
         val result = VolumeKeyZoom.onKeyDown(
             keyCode = keyCode,
@@ -730,13 +1516,17 @@ class MainActivity : AppCompatActivity() {
             canZoom = zoom != null && ZoomMath.canZoom(zoom.minZoomRatio, zoom.maxZoomRatio),
         )
         if (result.consumed) {
-            result.newLinear?.let { camera?.cameraControl?.setLinearZoom(it) }
+            result.newLinear?.let {
+                camera?.cameraControl?.setLinearZoom(it)
+                wantedLinearZoom = it
+            }
             return true
         }
         return super.onKeyDown(keyCode, event)
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (frozenKeysZoom(keyCode)) return true
         val zoom = currentZoom()
         val consumed = VolumeKeyZoom.consumesKeyUp(
             keyCode = keyCode,
@@ -747,6 +1537,10 @@ class MainActivity : AppCompatActivity() {
         return consumed || super.onKeyUp(keyCode, event)
     }
 
+    /** A volume key while the frozen picture is in front (no permission screen over it). */
+    private fun frozenKeysZoom(keyCode: Int): Boolean =
+        frozen && VolumeKeyZoom.stepsFor(keyCode) != 0 && permissionScreen == PermissionScreen.CAMERA && !isFinishing
+
     // ---- Layout --------------------------------------------------------------------------------
 
     /** Edge to edge: the picture fills the screen; the controls and panels keep clear of the bars. */
@@ -755,6 +1549,10 @@ class MainActivity : AppCompatActivity() {
         panelPadding = intArrayOf(
             permissionPanel.paddingLeft, permissionPanel.paddingTop,
             permissionPanel.paddingRight, permissionPanel.paddingBottom,
+        )
+        topMargins = intArrayOf(
+            (messageView.layoutParams as FrameLayout.LayoutParams).topMargin,
+            (photoProgress.layoutParams as FrameLayout.LayoutParams).topMargin,
         )
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
@@ -769,6 +1567,8 @@ class MainActivity : AppCompatActivity() {
                 right = panelPadding[2] + bars.right,
                 bottom = panelPadding[3] + bars.bottom,
             )
+            messageView.updateLayoutParams<FrameLayout.LayoutParams> { topMargin = topMargins[0] + bars.top }
+            photoProgress.updateLayoutParams<FrameLayout.LayoutParams> { topMargin = topMargins[1] + bars.top }
             insets
         }
     }
@@ -790,6 +1590,15 @@ class MainActivity : AppCompatActivity() {
 
         /** The guard's timeout runs a little after its deadline, so the last frames count. */
         private const val FOCUS_GUARD_SLACK_MS = 100L
+        private const val AF_SETTLE_SLACK_MS = 50L
+
+        /** The biggest photo Freeze asks for: 4:3, about 16 megapixels. */
+        private val PHOTO_MAX_SIZE = Size(4640, 3480)
+        private const val JPEG_QUALITY = 92
+
+        private const val SHORT_MESSAGE_MS = 1500L
+        private const val LONG_MESSAGE_MS = 3500L
+        private const val MESSAGE_FADE_MS = 300L
 
         /** Unit tests turn this off: Robolectric has no camera for CameraX to open. */
         @VisibleForTesting

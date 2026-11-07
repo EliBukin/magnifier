@@ -25,20 +25,75 @@
         <item name="iconTint">@color/control_foreground</item>
     </style>
 
-    <!-- The light and focus buttons: an icon and a word ("Light", "Auto"), 64dp tall. -->
-    <style name="Widget.Magnifier.StateButton" parent="Widget.Material3.Button">
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">@dimen/touch_target</item>
-        <item name="android:minWidth">@dimen/state_button_min_width</item>
-        <item name="android:paddingStart">16dp</item>
-        <item name="android:paddingEnd">16dp</item>
-        <item name="android:textSize">20sp</item>
+    <!-- The action tiles (colours, light, focus, save, share): an icon over a word, 76dp tall. -->
+    <style name="Widget.Magnifier.Tile" parent="Widget.Material3.Button">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">@dimen/tile_height</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:minWidth">@dimen/touch_target</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:paddingStart">2dp</item>
+        <item name="android:paddingEnd">2dp</item>
+        <item name="android:paddingTop">6dp</item>
+        <item name="android:paddingBottom">6dp</item>
         <item name="android:maxLines">1</item>
-        <item name="cornerRadius">32dp</item>
-        <item name="iconPadding">8dp</item>
-        <item name="iconSize">28dp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="autoSizeTextType">uniform</item>
+        <item name="autoSizeMinTextSize">11sp</item>
+        <item name="autoSizeMaxTextSize">15sp</item>
+        <item name="cornerRadius">18dp</item>
+        <item name="iconGravity">top</item>
+        <item name="iconPadding">2dp</item>
+        <item name="iconSize">30dp</item>
+        <item name="backgroundTint">@color/control_background</item>
+        <item name="android:textColor">@color/control_foreground</item>
+        <item name="iconTint">@color/control_foreground</item>
         <item name="strokeColor">@color/control_foreground</item>
         <item name="strokeWidth">2dp</item>
+    </style>
+
+    <!-- Freeze / Live: the main action, wider than the other tiles and in the accent colour. -->
+    <style name="Widget.Magnifier.FreezeButton" parent="Widget.Magnifier.Tile">
+        <item name="android:layout_weight">1.7</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="autoSizeMinTextSize">14sp</item>
+        <item name="autoSizeMaxTextSize">20sp</item>
+        <item name="cornerRadius">24dp</item>
+        <item name="iconSize">34dp</item>
+        <item name="backgroundTint">@color/accent</item>
+        <item name="android:textColor">@color/on_accent</item>
+        <item name="iconTint">@color/on_accent</item>
+        <item name="strokeColor">@color/accent</item>
+    </style>
+
+    <!-- The adjust tabs (zoom, brightness, focus) above the slider: the chosen one is yellow. -->
+    <style name="Widget.Magnifier.Tab" parent="Widget.Material3.Button">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">@dimen/tab_height</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:paddingStart">4dp</item>
+        <item name="android:paddingEnd">4dp</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textSize">18sp</item>
+        <item name="autoSizeTextType">uniform</item>
+        <item name="autoSizeMinTextSize">12sp</item>
+        <item name="autoSizeMaxTextSize">22sp</item>
+        <item name="backgroundTint">@color/tab_background</item>
+        <item name="android:textColor">@color/tab_foreground</item>
+        <item name="strokeColor">@color/control_foreground</item>
+        <item name="strokeWidth">2dp</item>
+    </style>
+
+    <!-- A slider with a button at each end. -->
+    <style name="Widget.Magnifier.SliderRow" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
     </style>
 
     <!-- The zoom and focus sliders. Height = the thumb plus the top and bottom padding: 36 + 2 x 14 = 64dp. -->
@@ -58,6 +113,7 @@
         <item name="thumbWidth">36dp</item>
         <item name="trackHeight">12dp</item>
         <item name="trackStopIndicatorSize">0dp</item>
+        <item name="tickVisible">false</item>
     </style>
 
     <!-- The one big action on a panel ("Continue", "Grant", "Try again"). -->

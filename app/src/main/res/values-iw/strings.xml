@@ -48,6 +48,60 @@
     <string name="focus_spoken_m">%1$s מטרים</string>
     <string name="focus_spoken_percent">%1$d%% מהדרך לרחוק</string>
 
+    <!-- The adjust tabs -->
+    <string name="tab_brightness">בהירות</string>
+    <string name="tab_focus">מיקוד</string>
+
+    <!-- Brightness -->
+    <string name="brightness_slider_desc">בהירות</string>
+    <string name="brightness_down_desc">כהה יותר</string>
+    <string name="brightness_up_desc">בהיר יותר</string>
+    <string name="brightness_normal">רגיל</string>
+    <plurals name="brightness_lighter">
+        <item quantity="one">בהיר יותר בצעד אחד</item>
+        <item quantity="two">בהיר יותר ב־%1$d צעדים</item>
+        <item quantity="other">בהיר יותר ב־%1$d צעדים</item>
+    </plurals>
+    <plurals name="brightness_darker">
+        <item quantity="one">כהה יותר בצעד אחד</item>
+        <item quantity="two">כהה יותר ב־%1$d צעדים</item>
+        <item quantity="other">כהה יותר ב־%1$d צעדים</item>
+    </plurals>
+    <string name="brightness_unavailable">המצלמה הזו לא יכולה לשנות את הבהירות. אפשר להקפיא את התמונה כדי להבהיר אותה.</string>
+
+    <!-- Colour modes -->
+    <string name="colour_desc">צבעים</string>
+    <string name="colour_action">החלפת הצבעים</string>
+    <string name="colour_normal">רגיל</string>
+    <string name="colour_high_contrast">ניגודיות גבוהה</string>
+    <string name="colour_inverted">צבעים הפוכים</string>
+    <string name="colour_yellow_on_black">צהוב על שחור</string>
+    <string name="colour_short_normal">רגיל</string>
+    <string name="colour_short_high_contrast">ניגודיות</string>
+    <string name="colour_short_inverted">הפוך</string>
+    <string name="colour_short_yellow_on_black">צהוב</string>
+
+    <!-- Freeze -->
+    <string name="freeze_button">הקפאה</string>
+    <string name="live_button">חי</string>
+    <string name="freeze_action">הקפאת התמונה</string>
+    <string name="live_action">חזרה לתמונה החיה</string>
+    <string name="frozen_state">התמונה מוקפאת</string>
+    <string name="frozen_desc">תמונה מוקפאת. אפשר לצבוט או להקיש פעמיים כדי להגדיל, ולגרור כדי לזוז.</string>
+    <string name="photo_failed">לא ניתן היה לצלם תמונה חדה. זו התמונה שהייתה על המסך.</string>
+
+    <!-- Save and share -->
+    <string name="save_button">שמירה</string>
+    <string name="save_desc">שמירת התמונה כולה</string>
+    <string name="share_button">שיתוף</string>
+    <string name="share_desc">שיתוף התמונה כולה</string>
+    <string name="share_chooser_title">שיתוף התמונה</string>
+    <string name="saved_message">התמונה כולה נשמרה בתיקייה Pictures, ‏Bukin Magnifier.</string>
+    <string name="save_failed">לא ניתן היה לשמור את התמונה.</string>
+    <string name="share_failed">לא ניתן היה לשתף את התמונה.</string>
+    <string name="save_permission_denied">כדי לשמור תמונות, יש לאפשר לאפליקציה לאחסן אותן.</string>
+    <string name="save_permission_blocked">האחסון כבוי עבור האפליקציה הזו. כדי לשמור תמונות, יש לאפשר אותו בהגדרות האפליקציה.</string>
+
     <!-- When the camera can't start -->
     <string name="error_no_camera">בטלפון הזה אין מצלמה אחורית, ולכן הזכוכית המגדלת לא יכולה לפעול.</string>
     <string name="error_in_use">אפליקציה אחרת משתמשת במצלמה. יש לסגור אותה ולהקיש על \"ניסיון חוזר\".</string>

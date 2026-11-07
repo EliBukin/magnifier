@@ -13,9 +13,15 @@
         android:name="android.hardware.camera.flash"
         android:required="false" />
 
-    <!-- The only permission. No internet: nothing ever leaves the phone. scripts/release.sh fails a
-         release whose merged manifest has any other. -->
+    <!-- The camera, plus storage for saving on old Android versions. No internet: nothing ever
+         leaves the phone unless the user shares a picture. scripts/release.sh fails a release whose
+         merged manifest has any other permission. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Saving a picture to Pictures/Bukin Magnifier on Android 7-9 only (Android 10+ needs no
+         permission for that). Asked for when the user first saves, never at start. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 
     <!-- Added by libraries, removed here: camera-view brings camera-video and media3, whose manifest
          asks for the network state (unused: the app plays and uploads nothing). A library that adds
@@ -53,6 +59,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Hands a shared picture to the app the user picks, read-only, for that share only.
+             Only cache/shared/ is exposed (res/xml/file_paths.xml). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

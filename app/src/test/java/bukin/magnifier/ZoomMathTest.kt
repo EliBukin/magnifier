@@ -111,10 +111,52 @@ class ZoomMathTest {
     }
 
     @Test
-    fun ratioIsShownWithOneDecimal() {
+    fun ratioHasTwoDecimalsBelowTwoAndOneFromTwoUp() {
+        assertEquals("1.04", ZoomMath.formatRatio(1.039f, Locale.US))
+        assertEquals("1.00", ZoomMath.formatRatio(1f, Locale.US))
+        assertEquals("1.99", ZoomMath.formatRatio(1.99f, Locale.US))
+        // Never "2.00": from just under 2 it's one decimal.
+        assertEquals("2.0", ZoomMath.formatRatio(1.996f, Locale.US))
         assertEquals("3.2", ZoomMath.formatRatio(3.2f, Locale.US))
-        assertEquals("1.0", ZoomMath.formatRatio(1f, Locale.US))
         assertEquals("8.0", ZoomMath.formatRatio(7.96f, Locale.US))
+        assertEquals("1.25", ZoomMath.formatRatio(1.25f, Locale.forLanguageTag("iw")))
         assertEquals("3.2", ZoomMath.formatRatio(3.2f, Locale.forLanguageTag("iw")))
+    }
+
+    @Test
+    fun everyZoomStepChangesTheNumberShown() {
+        // The A20 (1-4x) and other phones' ranges, from narrow to wide-angle.
+        val ranges = listOf(1f to 4f, 1f to 8f, 1f to 10f, 0.6f to 10f, 0.5f to 30f, 1f to 2.5f, 1f to 2.1f, 1f to 1.5f)
+        for ((min, max) in ranges) {
+            var linear = 0f
+            var label = ZoomMath.formatRatio(ZoomMath.linearToRatio(linear, min, max), Locale.US)
+            repeat(20) {
+                linear = ZoomMath.stepLinear(linear, 1)
+                val next = ZoomMath.formatRatio(ZoomMath.linearToRatio(linear, min, max), Locale.US)
+                assertTrue("$min-$max: step to $linear still shows $label", next != label)
+                label = next
+            }
+        }
+    }
+
+    @Test
+    fun theFrozenPicturesStepsChangeTheNumberToo() {
+        // Frozen zoom shown = the camera's zoom x the frozen scale; each step is about 1.15x.
+        for (cameraZoom in listOf(1f, 1.04f, 2.5f, 4f)) {
+            var scale = 0.62f
+            var label = ZoomMath.formatRatio(cameraZoom * scale, Locale.US)
+            while (scale < FrozenZoom.HIGH) {
+                scale = FrozenZoom.step(scale, 1, 0.62f, FrozenZoom.HIGH)
+                val next = ZoomMath.formatRatio(cameraZoom * scale, Locale.US)
+                assertTrue("camera $cameraZoom: frozen step to $scale still shows $label", next != label)
+                label = next
+            }
+        }
+    }
+
+    @Test
+    fun distancesInMetresHaveOneDecimal() {
+        assertEquals("1.5", ZoomMath.formatOneDecimal(1.5f, Locale.US))
+        assertEquals("2.0", ZoomMath.formatOneDecimal(2f, Locale.US))
     }
 }

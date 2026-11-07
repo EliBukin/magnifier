@@ -3,5 +3,7 @@
     <!-- Every control is at least this tall and wide (above the 48dp minimum, for shaky hands). -->
     <dimen name="touch_target">64dp</dimen>
     <dimen name="controls_padding">12dp</dimen>
-    <dimen name="state_button_min_width">112dp</dimen>
+    <!-- The action row (Freeze, light, ...) and the adjust tabs above the slider. -->
+    <dimen name="tile_height">76dp</dimen>
+    <dimen name="tab_height">56dp</dimen>
 </resources>

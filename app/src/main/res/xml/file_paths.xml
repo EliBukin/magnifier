@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the FileProvider may hand to other apps: only the pictures the user shares, which the app
+     writes to cache/shared/ and deletes on later launches (PictureStore). Nothing else. -->
+<paths>
+    <cache-path name="shared" path="shared/" />
+</paths>
