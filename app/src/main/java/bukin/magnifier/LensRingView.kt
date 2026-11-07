@@ -464,9 +464,10 @@ class LensRingView @JvmOverloads constructor(
         private const val DEFAULT_TICKS = 20
         private const val MAX_TICKS = 40
         private const val DISABLED_ALPHA = 100
-        private const val TRACK_COLOR = 0xFF5A5A5A.toInt()
-        private const val TICK_COLOR = 0xB3FFFFFF.toInt()
-        private const val ICON_COLOR = 0xE6FFFFFF.toInt()
+        // On the nearly black panel: the track at least 3:1 (a control's part), ticks and icons more.
+        internal const val TRACK_COLOR = 0xFF8A8A8A.toInt()
+        internal const val TICK_COLOR = 0xCCFFFFFF.toInt()
+        internal const val ICON_COLOR = 0xF2FFFFFF.toInt()
         private const val THUMB_OUTLINE_COLOR = 0x99000000.toInt()
     }
 }

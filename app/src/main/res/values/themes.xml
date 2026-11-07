@@ -11,28 +11,32 @@
     </style>
 
     <!-- The round buttons beside Freeze (brightness, light, focus, colours; frozen: save, share):
-         an icon over a short word. Material 3 buttons are fully rounded, so a square one is a circle. -->
+         a circle with the icon, and the word under it on the dark panel. One view, so the circle
+         and the word are one touch target: the background is inset at the bottom (and sides), and
+         the icon gap puts the word below the circle. Material 3 buttons are fully rounded, so the
+         square inset background is a circle. The word is always white (see paintStateButton). -->
     <style name="Widget.Magnifier.RoundButton" parent="Widget.Material3.Button">
-        <item name="android:layout_width">@dimen/side_button</item>
-        <item name="android:layout_height">@dimen/side_button</item>
-        <item name="android:minWidth">@dimen/side_button</item>
-        <item name="android:minHeight">@dimen/side_button</item>
+        <item name="android:layout_width">@dimen/side_button_width</item>
+        <item name="android:layout_height">@dimen/side_button_height</item>
+        <item name="android:minWidth">@dimen/side_button_width</item>
+        <item name="android:minHeight">@dimen/side_button_height</item>
         <item name="android:insetTop">0dp</item>
-        <item name="android:insetBottom">0dp</item>
-        <!-- The word sits where the circle is still wide, and the side padding keeps it inside
-             the round outline (autosize shrinks long words like "Contrast" or "אוטומטי"). -->
-        <item name="android:paddingStart">7dp</item>
-        <item name="android:paddingEnd">7dp</item>
-        <item name="android:paddingTop">5dp</item>
-        <item name="android:paddingBottom">8dp</item>
+        <item name="android:insetBottom">@dimen/side_label_height</item>
+        <item name="android:insetLeft">@dimen/side_circle_inset</item>
+        <item name="android:insetRight">@dimen/side_circle_inset</item>
+        <item name="android:paddingStart">0dp</item>
+        <item name="android:paddingEnd">0dp</item>
+        <item name="android:paddingTop">@dimen/side_icon_top</item>
+        <item name="android:paddingBottom">0dp</item>
+        <item name="android:gravity">center</item>
         <item name="android:maxLines">1</item>
-        <item name="android:textSize">13sp</item>
+        <item name="android:textSize">14sp</item>
         <item name="autoSizeTextType">uniform</item>
-        <item name="autoSizeMinTextSize">9sp</item>
-        <item name="autoSizeMaxTextSize">13sp</item>
+        <item name="autoSizeMinTextSize">10sp</item>
+        <item name="autoSizeMaxTextSize">14sp</item>
         <item name="iconGravity">top</item>
-        <item name="iconPadding">0dp</item>
-        <item name="iconSize">26dp</item>
+        <item name="iconPadding">@dimen/side_icon_gap</item>
+        <item name="iconSize">@dimen/side_icon</item>
         <item name="backgroundTint">@color/control_background</item>
         <item name="android:textColor">@color/control_foreground</item>
         <item name="iconTint">@color/control_foreground</item>
@@ -40,20 +44,24 @@
         <item name="strokeWidth">2dp</item>
     </style>
 
-    <!-- Freeze / Live: the main action, the biggest circle, in the accent colour. -->
+    <!-- Freeze / Live: the main action, the biggest circle, in the accent colour, its word inside. -->
     <style name="Widget.Magnifier.FreezeButton" parent="Widget.Magnifier.RoundButton">
         <item name="android:layout_width">@dimen/freeze_button</item>
         <item name="android:layout_height">@dimen/freeze_button</item>
         <item name="android:minWidth">@dimen/freeze_button</item>
         <item name="android:minHeight">@dimen/freeze_button</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:insetLeft">0dp</item>
+        <item name="android:insetRight">0dp</item>
         <item name="android:paddingTop">12dp</item>
-        <item name="android:paddingBottom">10dp</item>
-        <item name="android:paddingStart">6dp</item>
-        <item name="android:paddingEnd">6dp</item>
+        <item name="android:paddingBottom">12dp</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
         <item name="android:textSize">17sp</item>
         <item name="android:textStyle">bold</item>
         <item name="autoSizeMinTextSize">12sp</item>
         <item name="autoSizeMaxTextSize">17sp</item>
+        <item name="iconPadding">0dp</item>
         <item name="iconSize">36dp</item>
         <item name="backgroundTint">@color/accent</item>
         <item name="android:textColor">@color/on_accent</item>

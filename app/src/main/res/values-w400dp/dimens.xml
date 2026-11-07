@@ -1,10 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Phones 400dp wide and more (the Galaxy A20 is 411dp): bigger round buttons and Freeze. -->
-    <dimen name="side_button">64dp</dimen>
+    <dimen name="side_button_width">68dp</dimen>
+    <dimen name="side_button_height">84dp</dimen>
+    <!-- The circle: the button's top part, 64dp across (2dp in from each side). -->
+    <dimen name="side_circle_inset">2dp</dimen>
+    <!-- The word under the circle, still inside the touch target. -->
+    <dimen name="side_label_height">20dp</dimen>
+    <dimen name="side_icon">30dp</dimen>
+    <dimen name="side_icon_top">17dp</dimen>
+    <dimen name="side_icon_gap">17dp</dimen>
     <dimen name="freeze_button">96dp</dimen>
-    <dimen name="freeze_rise">-32dp</dimen>
+    <!-- Freeze is taller than the other buttons; the row moves up by the difference, into the ring. -->
+    <dimen name="freeze_rise">-12dp</dimen>
+    <!-- The ring's centre: what it adjusts and the value, just above Freeze. -->
     <dimen name="ring_centre_width">180dp</dimen>
-    <dimen name="ring_centre_bottom">38dp</dimen>
-    <dimen name="ring_value_height">48dp</dimen>
+    <dimen name="ring_centre_bottom">18dp</dimen>
+    <dimen name="ring_value_height">52dp</dimen>
 </resources>

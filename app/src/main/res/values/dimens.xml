@@ -5,18 +5,25 @@
 
     <!-- The panel. These sizes are for phones under 360dp wide (480 x 800 at hdpi is 320dp): four
          round buttons and Freeze still fit in one row. values-w360dp and values-w400dp have the
-         bigger sizes. -->
+         bigger sizes. Every round button is at least 56dp across. -->
     <dimen name="panel_side_padding">6dp</dimen>
     <dimen name="panel_top_padding">4dp</dimen>
     <dimen name="panel_bottom_padding">8dp</dimen>
-    <!-- The round buttons beside Freeze: never under 56dp. -->
-    <dimen name="side_button">56dp</dimen>
+    <dimen name="ring_caption_height">20dp</dimen>
+    <dimen name="side_button_width">56dp</dimen>
+    <dimen name="side_button_height">72dp</dimen>
+    <!-- The circle: the button's top part, 56dp across (0dp in from each side). -->
+    <dimen name="side_circle_inset">0dp</dimen>
+    <!-- The word under the circle, still inside the touch target. -->
+    <dimen name="side_label_height">16dp</dimen>
+    <dimen name="side_icon">26dp</dimen>
+    <dimen name="side_icon_top">15dp</dimen>
+    <dimen name="side_icon_gap">15dp</dimen>
     <dimen name="freeze_button">76dp</dimen>
     <!-- Freeze is taller than the other buttons; the row moves up by the difference, into the ring. -->
-    <dimen name="freeze_rise">-20dp</dimen>
+    <dimen name="freeze_rise">-4dp</dimen>
     <!-- The ring's centre: what it adjusts and the value, just above Freeze. -->
     <dimen name="ring_centre_width">140dp</dimen>
-    <dimen name="ring_centre_bottom">26dp</dimen>
-    <dimen name="ring_caption_height">20dp</dimen>
-    <dimen name="ring_value_height">40dp</dimen>
+    <dimen name="ring_centre_bottom">10dp</dimen>
+    <dimen name="ring_value_height">44dp</dimen>
 </resources>

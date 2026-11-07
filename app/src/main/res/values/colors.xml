@@ -6,7 +6,9 @@
     <color name="on_accent">#FF000000</color>
     <color name="control_foreground">#FFFFFFFF</color>
     <color name="control_background">#FF2B2B2B</color>
-    <color name="controls_scrim">#CC000000</color>
+    <!-- The bottom panel: nearly opaque, so the ring, its ticks and the words stay readable over
+         a white page (white under it shows as #0F0F0F). -->
+    <color name="controls_scrim">#F0000000</color>
     <color name="panel">#E6202020</color>
     <color name="launcher_background">#FF1E2A44</color>
 </resources>

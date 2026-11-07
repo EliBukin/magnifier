@@ -246,6 +246,7 @@ class MainActivityTest {
         // With a 48dp navigation bar below it, as on the A20.
         val share = (panel + 48 * density) / root
         assertTrue("the panel covers ${share * 100}%", share <= 0.40f)
+        println("360 x 780dp: the panel covers ${share * 100}% with a 48dp navigation bar")
         val freeze = activity.findViewById<View>(R.id.freezeButton)
         for (id in listOf(R.id.brightnessButton, R.id.lightButton, R.id.focusButton, R.id.colourButton)) {
             val side = activity.findViewById<View>(id)

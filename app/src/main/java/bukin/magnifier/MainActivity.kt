@@ -577,6 +577,12 @@ class MainActivity : AppCompatActivity() {
         colourButton.setOnClickListener { setColourMode(colourMode.next(), announce = true) }
         saveButton.setOnClickListener { onSaveButton() }
         shareButton.setOnClickListener { startExport(ExportKind.SHARE) }
+        // The round buttons' circle is their background inset at the bottom (see RoundButton in
+        // themes.xml). MaterialButton adds its insets to the padding, which would leave no room for
+        // the word under the circle; the word goes there, so the bottom and side padding are 0.
+        for (button in listOf(brightnessButton, lightButton, saveButton, focusButton, shareButton, colourButton)) {
+            button.setPaddingRelative(0, button.paddingTop, 0, 0)
+        }
         // Inside the ring: back to zoom. Clickable only while the ring adjusts something else.
         ringCentre.setOnClickListener { setRingMode(RingMode.ZOOM) }
         lensRing.listener = object : LensRingView.Listener {
@@ -940,8 +946,9 @@ class MainActivity : AppCompatActivity() {
         val background = ContextCompat.getColor(context, if (highlighted) R.color.accent else R.color.control_background)
         val foreground = ContextCompat.getColor(context, if (highlighted) R.color.on_accent else R.color.control_foreground)
         button.backgroundTintList = ColorStateList.valueOf(background)
-        button.setTextColor(foreground)
         button.iconTint = ColorStateList.valueOf(foreground)
+        // The word is under the circle, on the dark panel: always white.
+        button.setTextColor(ContextCompat.getColor(context, R.color.control_foreground))
     }
 
     // ---- Colours -------------------------------------------------------------------------------

@@ -45,10 +45,13 @@ phone unless you share a picture yourself.
   what the ring shows start fresh every time.
 - **Easy to use:** one row of big round buttons under the ring, within reach of
   one thumb: Brightness, Light, **Freeze** (the biggest, in the middle), Focus,
-  Colours; frozen, Save and Share take the Light's and Focus's places. Every
-  button is at least 56dp (64dp on phones 400dp wide and up), the ring's touch
-  band is 56dp thick, and the panel covers under 40% of the screen. TalkBack
-  labels and states on every control. English and Hebrew (right to left).
+  Colours; frozen, Save and Share take the Light's and Focus's places. Each side
+  button is a circle with its icon and a word under it (the circle and the word
+  are one touch target): 58dp circles on most phones, 64dp from 400dp wide, 56dp
+  under 360dp. The ring's touch band is 56dp thick. The panel is nearly opaque,
+  so the ring and the words stay readable over a white page, and it covers under
+  40% of a 720 x 1560 screen. TalkBack labels and states on every control.
+  English and Hebrew (right to left).
 
 ## Building
 

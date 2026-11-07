@@ -1,10 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Phones 360dp to 400dp wide (a 720 x 1560 screen at xhdpi is 360dp). -->
-    <dimen name="side_button">58dp</dimen>
+    <dimen name="side_button_width">60dp</dimen>
+    <dimen name="side_button_height">76dp</dimen>
+    <!-- The circle: the button's top part, 58dp across (1dp in from each side). -->
+    <dimen name="side_circle_inset">1dp</dimen>
+    <!-- The word under the circle, still inside the touch target. -->
+    <dimen name="side_label_height">18dp</dimen>
+    <dimen name="side_icon">28dp</dimen>
+    <dimen name="side_icon_top">15dp</dimen>
+    <dimen name="side_icon_gap">15dp</dimen>
     <dimen name="freeze_button">88dp</dimen>
-    <dimen name="freeze_rise">-30dp</dimen>
+    <!-- Freeze is taller than the other buttons; the row moves up by the difference, into the ring. -->
+    <dimen name="freeze_rise">-12dp</dimen>
+    <!-- The ring's centre: what it adjusts and the value, just above Freeze. -->
     <dimen name="ring_centre_width">160dp</dimen>
-    <dimen name="ring_centre_bottom">36dp</dimen>
-    <dimen name="ring_value_height">44dp</dimen>
+    <dimen name="ring_centre_bottom">18dp</dimen>
+    <dimen name="ring_value_height">48dp</dimen>
 </resources>
