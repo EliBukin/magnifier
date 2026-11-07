@@ -8,8 +8,15 @@ import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.PointF
+import android.hardware.camera2.CameraCaptureSession
+import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CameraMetadata
+import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.CaptureResult
+import android.hardware.camera2.TotalCaptureResult
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.GestureDetector
@@ -21,9 +28,16 @@ import android.view.WindowManager
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.OptIn
 import androidx.annotation.VisibleForTesting
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.camera2.interop.Camera2CameraControl
+import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.Camera2Interop
+import androidx.camera.camera2.interop.CaptureRequestOptions
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
+import androidx.camera.core.CameraInfo
 import androidx.camera.core.CameraInfoUnavailableException
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.CameraState
@@ -36,16 +50,20 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import bukin.magnifier.databinding.ActivityMainBinding
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.slider.Slider
-import java.util.concurrent.TimeUnit
+import com.google.common.util.concurrent.ListenableFuture
+import kotlin.math.abs
 
 /**
  * The magnifier: the rear camera full screen, with zoom (slider, pinch, volume keys, buttons),
- * tap to focus and the LED light. Before the camera permission is granted, a permission screen
- * covers it; when the camera can't start, an error panel does.
+ * focus (auto, tap to lock, and a near-to-far slider where the camera supports it) and the LED
+ * light. Before the camera permission is granted, a permission screen covers it; when the camera
+ * can't start, an error panel does.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -68,6 +86,25 @@ class MainActivity : AppCompatActivity() {
     private var draggingSlider = false
     private var updatingSlider = false
     private var pendingTap: PointF? = null
+
+    @VisibleForTesting
+    internal var focusMode = FocusMode.AUTO
+        private set
+
+    /** The focus slider's range, or null when the camera has no manual focus (the slider is hidden). */
+    @VisibleForTesting
+    @Volatile
+    internal var manualFocus: ManualFocus? = null
+
+    /** Counts focus changes, so a slow camera reply to an older one is ignored. */
+    private var focusGeneration = 0
+    private var updatingFocusSlider = false
+    private var draggingFocusSlider = false
+
+    /** The lens's focus distance in the latest frame (diopters), written on a camera thread. */
+    @Volatile
+    private var lensDiopters = Float.NaN
+    private var lastFocusSync = 0L
     private var controlsPadding = IntArray(4)
     private var panelPadding = IntArray(4)
 
@@ -88,12 +125,19 @@ class MainActivity : AppCompatActivity() {
         setUpPreviewGestures()
         renderZoom()
         renderTorch()
+        renderFocus()
     }
 
     override fun onStart() {
         super.onStart()
         // Also after returning from the app's settings, where the permission may have changed.
         refreshPermission()
+    }
+
+    override fun onStop() {
+        // Leaving the app ends a focus lock or manual focus: the next look starts in Auto.
+        onFocusEvent(FocusEvent.LEFT_APP)
+        super.onStop()
     }
 
     // ---- Permission ----------------------------------------------------------------------------
@@ -181,7 +225,7 @@ class MainActivity : AppCompatActivity() {
             showProblem(CameraProblem.NO_REAR_CAMERA)
             return
         }
-        val preview = Preview.Builder().build()
+        val preview = buildPreview()
         preview.setSurfaceProvider(binding.previewView.surfaceProvider)
         val bound = try {
             provider.unbindAll()
@@ -193,6 +237,8 @@ class MainActivity : AppCompatActivity() {
         }
         camera = bound
         hasFlashUnit = bound.cameraInfo.hasFlashUnit()
+        manualFocus = readManualFocus(bound.cameraInfo)
+        debugLog("manual focus: $manualFocus")
         bound.cameraInfo.zoomState.observe(this) { renderZoom() }
         bound.cameraInfo.torchState.observe(this) { state ->
             torchState = state
@@ -201,6 +247,34 @@ class MainActivity : AppCompatActivity() {
         bound.cameraInfo.cameraState.observe(this) { onCameraState(it) }
         renderZoom()
         renderTorch()
+        renderFocus()
+    }
+
+    /** The preview, with a listener that reads each frame's lens focus distance. */
+    @OptIn(ExperimentalCamera2Interop::class)
+    private fun buildPreview(): Preview {
+        val builder = Preview.Builder()
+        Camera2Interop.Extender(builder).setSessionCaptureCallback(object : CameraCaptureSession.CaptureCallback() {
+            override fun onCaptureCompleted(
+                session: CameraCaptureSession,
+                request: CaptureRequest,
+                result: TotalCaptureResult,
+            ) = onFrameResult(result)
+        })
+        return builder.build()
+    }
+
+    /**
+     * Manual focus for the bound camera: only when it officially supports it (see
+     * [ManualFocus.check]).
+     */
+    @OptIn(ExperimentalCamera2Interop::class)
+    private fun readManualFocus(info: CameraInfo): ManualFocus? = try {
+        val id = Camera2CameraInfo.from(info).cameraId
+        ManualFocus.from(getSystemService(CameraManager::class.java).getCameraCharacteristics(id))
+    } catch (e: Exception) {
+        debugLog("reading the focus characteristics failed", e)
+        null
     }
 
     private fun onCameraState(state: CameraState) {
@@ -216,6 +290,7 @@ class MainActivity : AppCompatActivity() {
 
     /** "Try again": drops the camera and binds it afresh. */
     private fun retryCamera() {
+        onFocusEvent(FocusEvent.CAMERA_RESTARTED)
         camera?.cameraInfo?.let { info ->
             info.zoomState.removeObservers(this)
             info.torchState.removeObservers(this)
@@ -224,9 +299,11 @@ class MainActivity : AppCompatActivity() {
         camera = null
         hasFlashUnit = null
         torchState = null
+        manualFocus = null
         showProblem(null)
         renderZoom()
         renderTorch()
+        renderFocus()
         val provider = cameraProvider
         if (provider != null) bindCamera(provider) else startCamera()
     }
@@ -282,6 +359,8 @@ class MainActivity : AppCompatActivity() {
         }
         zoomIn.setOnClickListener { zoomBySteps(1) }
         zoomOut.setOnClickListener { zoomBySteps(-1) }
+        focusButton.setOnClickListener { onFocusEvent(FocusEvent.FOCUS_BUTTON) }
+        setUpFocusSlider()
 
         zoomSlider.valueFrom = 0f
         zoomSlider.valueTo = ZoomMath.SLIDER_MAX
@@ -304,6 +383,40 @@ class MainActivity : AppCompatActivity() {
             val zoom = currentZoom() ?: return@setLabelFormatter ""
             val ratio = ZoomMath.linearToRatio(ZoomMath.sliderToLinear(value), zoom.minZoomRatio, zoom.maxZoomRatio)
             getString(R.string.zoom_spoken, ZoomMath.formatRatio(ratio, resources.configuration.locales[0]))
+        }
+    }
+
+    private fun setUpFocusSlider() = with(binding) {
+        focusSlider.valueFrom = 0f
+        focusSlider.valueTo = ManualFocus.SLIDER_MAX
+        focusSlider.value = ManualFocus.SLIDER_MAX
+        focusSlider.addOnChangeListener { _, _, _ ->
+            // As with zoom: any change the app didn't make itself is the user's.
+            if (!updatingFocusSlider) onFocusEvent(FocusEvent.FOCUS_SLIDER)
+        }
+        focusSlider.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
+            override fun onStartTrackingTouch(slider: Slider) {
+                draggingFocusSlider = true
+            }
+
+            override fun onStopTrackingTouch(slider: Slider) {
+                draggingFocusSlider = false
+            }
+        })
+        focusNear.setOnClickListener { focusSlider.value = ManualFocus.step(focusSlider.value, -1) }
+        focusFar.setOnClickListener { focusSlider.value = ManualFocus.step(focusSlider.value, 1) }
+        focusSlider.setLabelFormatter { value -> spokenFocus(value) }
+    }
+
+    private fun spokenFocus(value: Float): String {
+        val range = manualFocus ?: return ""
+        return when (val distance = range.describe(value)) {
+            ManualFocus.Distance.Far -> getString(R.string.focus_spoken_far)
+            is ManualFocus.Distance.Centimetres ->
+                resources.getQuantityString(R.plurals.focus_spoken_cm, distance.cm, distance.cm)
+            is ManualFocus.Distance.Metres ->
+                getString(R.string.focus_spoken_m, ZoomMath.formatRatio(distance.m, resources.configuration.locales[0]))
+            is ManualFocus.Distance.Percent -> getString(R.string.focus_spoken_percent, distance.percent)
         }
     }
 
@@ -350,12 +463,36 @@ class MainActivity : AppCompatActivity() {
             this,
             if (state.stateDescription != 0) getString(state.stateDescription) else null,
         )
-        val background = ContextCompat.getColor(context, if (state.isOn) R.color.accent else R.color.control_background)
-        val foreground = ContextCompat.getColor(context, if (state.isOn) R.color.on_accent else R.color.control_foreground)
-        backgroundTintList = ColorStateList.valueOf(background)
-        setTextColor(foreground)
-        iconTint = ColorStateList.valueOf(foreground)
+        paintStateButton(this, highlighted = state.isOn)
         alpha = if (state.enabled) 1f else DISABLED_ALPHA
+    }
+
+    /** The light and focus buttons: accent colour when they're not in their default state. */
+    private fun paintStateButton(button: MaterialButton, highlighted: Boolean) {
+        val context = button.context
+        val background = ContextCompat.getColor(context, if (highlighted) R.color.accent else R.color.control_background)
+        val foreground = ContextCompat.getColor(context, if (highlighted) R.color.on_accent else R.color.control_foreground)
+        button.backgroundTintList = ColorStateList.valueOf(background)
+        button.setTextColor(foreground)
+        button.iconTint = ColorStateList.valueOf(foreground)
+    }
+
+    private fun renderFocus() = with(binding) {
+        val mode = focusMode
+        val ready = camera != null
+        focusButton.isEnabled = ready
+        focusButton.setText(mode.text)
+        focusButton.setIconResource(mode.icon)
+        ViewCompat.setStateDescription(focusButton, getString(mode.text))
+        ViewCompat.replaceAccessibilityAction(
+            focusButton, AccessibilityActionCompat.ACTION_CLICK, getString(mode.buttonAction), null,
+        )
+        paintStateButton(focusButton, mode.highlighted)
+        focusButton.alpha = if (ready) 1f else DISABLED_ALPHA
+        focusRow.isVisible = manualFocus != null
+        focusSlider.isEnabled = ready
+        focusNear.isEnabled = ready && focusSlider.value > 0f
+        focusFar.isEnabled = ready && focusSlider.value < ManualFocus.SLIDER_MAX
     }
 
     // ---- Preview gestures: pinch to zoom, tap to focus -----------------------------------------
@@ -387,25 +524,63 @@ class MainActivity : AppCompatActivity() {
             if (event.actionMasked == MotionEvent.ACTION_UP && pendingTap != null) view.performClick()
             true
         }
-        // A tap (above) focuses where the finger was; a click from TalkBack or a keyboard focuses
-        // the middle of the picture.
+        // A tap (above) focuses where the finger was and locks the focus there; a click from
+        // TalkBack or a keyboard does it for the middle of the picture.
         binding.previewView.setOnClickListener { view ->
             val point = pendingTap ?: PointF(view.width / 2f, view.height / 2f)
             pendingTap = null
-            focusAt(point.x, point.y)
+            if (cameraInFront()) onFocusEvent(FocusEvent.TAP_PICTURE, point)
         }
     }
 
-    private fun focusAt(x: Float, y: Float) {
-        val cam = camera ?: return
+    // ---- Focus: Auto, Locked (tap), Manual (slider) ---------------------------------------------
+
+    @VisibleForTesting
+    internal fun onFocusEvent(event: FocusEvent, at: PointF? = null) {
+        val old = focusMode
+        val new = old.next(event, manualSupported = manualFocus != null)
+        focusMode = new
+        val generation = ++focusGeneration
+        val cam = camera
+        if (cam != null) {
+            when (new) {
+                FocusMode.AUTO -> backToAuto(cam)
+                FocusMode.LOCKED -> {
+                    val point = at ?: PointF(binding.previewView.width / 2f, binding.previewView.height / 2f)
+                    // Manual focus's AF_MODE_OFF would override the tap's autofocus: clear it first.
+                    if (old == FocusMode.MANUAL) {
+                        clearManualFocus(cam).addListener({
+                            if (generation == focusGeneration) lockFocusAt(cam, point)
+                        }, ContextCompat.getMainExecutor(this))
+                    } else {
+                        lockFocusAt(cam, point)
+                    }
+                }
+                FocusMode.MANUAL -> {
+                    if (old == FocusMode.LOCKED) cam.cameraControl.cancelFocusAndMetering().logFailure("cancel focus")
+                    setManualFocus(cam, binding.focusSlider.value)
+                }
+            }
+        }
+        if (new != old) debugLog("focus $old -> $new ($event)")
+        renderFocus()
+    }
+
+    /** Continuous autofocus again: no tap lock, no manual distance. */
+    private fun backToAuto(cam: Camera) {
+        // Both always: the camera ignores what isn't set, and LEFT_APP may come while it closes.
+        clearManualFocus(cam)
+        cam.cameraControl.cancelFocusAndMetering().logFailure("cancel focus")
+    }
+
+    /** Focus and meter at [x], [y] once, then keep the lens there: no auto-cancel. */
+    private fun lockFocusAt(cam: Camera, point: PointF) {
         if (!cameraInFront()) return
-        val point = binding.previewView.meteringPointFactory.createPoint(x, y)
-        // Focus and exposure at the point; after FOCUS_RESET_SECONDS CameraX cancels it and the
-        // camera returns to continuous autofocus.
-        val action = FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE)
-            .setAutoCancelDuration(FOCUS_RESET_SECONDS, TimeUnit.SECONDS)
-            .build()
-        val tap = binding.focusRing.show(x, y)
+        val meteringPoint = binding.previewView.meteringPointFactory.createPoint(point.x, point.y)
+        val action = FocusMeteringAction.Builder(
+            meteringPoint, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE,
+        ).disableAutoCancel().build()
+        val tap = binding.focusRing.show(point.x, point.y)
         val result = cam.cameraControl.startFocusAndMetering(action)
         result.addListener({
             val focused = try {
@@ -414,9 +589,61 @@ class MainActivity : AppCompatActivity() {
                 debugLog("tap to focus failed", e)
                 false
             }
-            debugLog("tap to focus at (${x.toInt()}, ${y.toInt()}): focused=$focused")
+            debugLog("focus locked at (${point.x.toInt()}, ${point.y.toInt()}): focused=$focused")
             binding.focusRing.showResult(tap, focused)
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    /** Autofocus off, and the lens at the slider's distance. */
+    @OptIn(ExperimentalCamera2Interop::class)
+    private fun setManualFocus(cam: Camera, sliderValue: Float) {
+        val range = manualFocus ?: return
+        val diopters = range.sliderToDiopters(sliderValue)
+        val options = CaptureRequestOptions.Builder()
+            .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF)
+            .setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, diopters)
+            .build()
+        Camera2CameraControl.from(cam.cameraControl).setCaptureRequestOptions(options).logFailure("manual focus")
+    }
+
+    @OptIn(ExperimentalCamera2Interop::class)
+    private fun clearManualFocus(cam: Camera): ListenableFuture<Void?> =
+        Camera2CameraControl.from(cam.cameraControl).clearCaptureRequestOptions().also { it.logFailure("clear manual focus") }
+
+    /**
+     * Each frame's result, on a camera thread. Outside Manual, the focus slider follows where
+     * autofocus put the lens, so taking it over doesn't jump the focus.
+     */
+    private fun onFrameResult(result: TotalCaptureResult) {
+        val diopters = result.get(CaptureResult.LENS_FOCUS_DISTANCE) ?: return
+        val previous = lensDiopters
+        lensDiopters = diopters
+        if (manualFocus == null) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastFocusSync < FOCUS_SYNC_MS || abs(diopters - previous) < FOCUS_SYNC_DIOPTERS) return
+        lastFocusSync = now
+        binding.focusSlider.post { syncFocusSliderToLens() }
+    }
+
+    private fun syncFocusSliderToLens() {
+        val range = manualFocus ?: return
+        val diopters = lensDiopters
+        if (focusMode == FocusMode.MANUAL || draggingFocusSlider || diopters.isNaN()) return
+        updatingFocusSlider = true
+        binding.focusSlider.value = range.dioptersToSlider(diopters)
+        updatingFocusSlider = false
+        renderFocus()
+    }
+
+    private fun <T> ListenableFuture<T>.logFailure(what: String) {
+        if (!BuildConfig.DEBUG) return
+        addListener({
+            try {
+                get()
+            } catch (e: Exception) {
+                debugLog("$what: ${e.javaClass.simpleName} ${e.message}")
+            }
+        }, ContextCompat.getMainExecutor(this@MainActivity))
     }
 
     // ---- Volume keys ---------------------------------------------------------------------------
@@ -484,7 +711,9 @@ class MainActivity : AppCompatActivity() {
         const val STATE_PREFS = "magnifier_state"
         const val KEY_ASKED_CAMERA = "asked_camera_permission"
 
-        const val FOCUS_RESET_SECONDS = 5L
+        /** The focus slider follows the lens at most this often, and only for a change this big. */
+        private const val FOCUS_SYNC_MS = 250L
+        private const val FOCUS_SYNC_DIOPTERS = 0.05f
 
         /** Unit tests turn this off: Robolectric has no camera for CameraX to open. */
         @VisibleForTesting

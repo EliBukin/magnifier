@@ -45,34 +45,38 @@
             <TextView
                 android:id="@+id/zoomLabel"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="@dimen/touch_target"
                 android:layout_weight="1"
                 android:accessibilityLiveRegion="polite"
                 android:gravity="center_vertical|start"
-                android:minHeight="@dimen/touch_target"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
+                android:maxLines="1"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
                 android:textAlignment="viewStart"
                 android:textColor="@color/control_foreground"
                 android:textDirection="ltr"
                 android:textSize="32sp"
                 android:textStyle="bold"
+                app:autoSizeMaxTextSize="32sp"
+                app:autoSizeMinTextSize="16sp"
+                app:autoSizeTextType="uniform"
                 tools:text="3.2×" />
+
+            <!-- The focus mode: Auto, Locked (after a tap on the picture) or Manual (the focus slider). -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/focusButton"
+                style="@style/Widget.Magnifier.StateButton"
+                android:contentDescription="@string/focus_desc"
+                android:text="@string/focus_auto"
+                app:icon="@drawable/ic_focus_auto" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/lightButton"
-                android:layout_width="wrap_content"
-                android:layout_height="@dimen/touch_target"
-                android:minWidth="@dimen/light_button_min_width"
+                style="@style/Widget.Magnifier.StateButton"
+                android:layout_marginStart="8dp"
                 android:contentDescription="@string/light_desc"
                 android:text="@string/light_button"
-                android:textSize="20sp"
-                app:cornerRadius="32dp"
-                app:icon="@drawable/ic_light_off"
-                app:iconPadding="8dp"
-                app:iconSize="28dp"
-                app:strokeColor="@color/control_foreground"
-                app:strokeWidth="2dp" />
+                app:icon="@drawable/ic_light_off" />
         </LinearLayout>
 
         <LinearLayout
@@ -88,31 +92,45 @@
                 android:contentDescription="@string/zoom_out_desc"
                 app:icon="@drawable/ic_zoom_out" />
 
-            <!-- Its height comes from the thumb plus the top and bottom padding: 36 + 2 x 14 = 64dp. -->
             <com.google.android.material.slider.Slider
                 android:id="@+id/zoomSlider"
-                android:layout_width="0dp"
-                android:layout_height="@dimen/touch_target"
-                android:layout_weight="1"
-                android:contentDescription="@string/zoom_slider_desc"
-                android:paddingTop="14dp"
-                android:paddingBottom="14dp"
-                android:valueFrom="0"
-                android:valueTo="100"
-                app:haloRadius="28dp"
-                app:labelBehavior="gone"
-                app:minTouchTargetSize="@dimen/touch_target"
-                app:thumbHeight="36dp"
-                app:thumbTrackGapSize="0dp"
-                app:thumbWidth="36dp"
-                app:trackHeight="12dp"
-                app:trackStopIndicatorSize="0dp" />
+                style="@style/Widget.Magnifier.BigSlider"
+                android:contentDescription="@string/zoom_slider_desc" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/zoomIn"
                 style="@style/Widget.Magnifier.ZoomButton"
                 android:contentDescription="@string/zoom_in_desc"
                 app:icon="@drawable/ic_zoom_in" />
+        </LinearLayout>
+
+        <!-- Manual focus, near to far: only on phones whose camera supports it. -->
+        <LinearLayout
+            android:id="@+id/focusRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/focusNear"
+                style="@style/Widget.Magnifier.ZoomButton"
+                android:contentDescription="@string/focus_near_desc"
+                app:icon="@drawable/ic_focus_near" />
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/focusSlider"
+                style="@style/Widget.Magnifier.BigSlider"
+                android:contentDescription="@string/focus_slider_desc" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/focusFar"
+                style="@style/Widget.Magnifier.ZoomButton"
+                android:contentDescription="@string/focus_far_desc"
+                app:icon="@drawable/ic_focus_far" />
         </LinearLayout>
     </LinearLayout>
 

@@ -25,6 +25,41 @@
         <item name="iconTint">@color/control_foreground</item>
     </style>
 
+    <!-- The light and focus buttons: an icon and a word ("Light", "Auto"), 64dp tall. -->
+    <style name="Widget.Magnifier.StateButton" parent="Widget.Material3.Button">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">@dimen/touch_target</item>
+        <item name="android:minWidth">@dimen/state_button_min_width</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:maxLines">1</item>
+        <item name="cornerRadius">32dp</item>
+        <item name="iconPadding">8dp</item>
+        <item name="iconSize">28dp</item>
+        <item name="strokeColor">@color/control_foreground</item>
+        <item name="strokeWidth">2dp</item>
+    </style>
+
+    <!-- The zoom and focus sliders. Height = the thumb plus the top and bottom padding: 36 + 2 x 14 = 64dp. -->
+    <style name="Widget.Magnifier.BigSlider" parent="Widget.Material3.Slider">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">@dimen/touch_target</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:paddingTop">14dp</item>
+        <item name="android:paddingBottom">14dp</item>
+        <item name="android:valueFrom">0</item>
+        <item name="android:valueTo">100</item>
+        <item name="haloRadius">28dp</item>
+        <item name="labelBehavior">gone</item>
+        <item name="minTouchTargetSize">@dimen/touch_target</item>
+        <item name="thumbHeight">36dp</item>
+        <item name="thumbTrackGapSize">0dp</item>
+        <item name="thumbWidth">36dp</item>
+        <item name="trackHeight">12dp</item>
+        <item name="trackStopIndicatorSize">0dp</item>
+    </style>
+
     <!-- The one big action on a panel ("Continue", "Grant", "Try again"). -->
     <style name="Widget.Magnifier.BigButton" parent="Widget.Material3.Button">
         <item name="android:layout_width">wrap_content</item>

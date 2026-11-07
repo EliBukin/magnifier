@@ -11,7 +11,7 @@
     <string name="permission_open_settings">פתיחת ההגדרות</string>
 
     <!-- Camera picture -->
-    <string name="preview_desc">תמונת המצלמה. יש להקיש כדי למקד.</string>
+    <string name="preview_desc">תמונת המצלמה. יש להקיש כדי למקד ולנעול את המיקוד.</string>
 
     <!-- Zoom -->
     <string name="zoom_label">%1$s×</string>
@@ -28,6 +28,25 @@
     <string name="light_none_desc">הפנס לא זמין: למצלמה האחורית בטלפון הזה אין פלאש</string>
     <string name="state_on">פועל</string>
     <string name="state_off">כבוי</string>
+
+    <!-- Focus -->
+    <string name="focus_desc">מיקוד</string>
+    <string name="focus_auto">אוטומטי</string>
+    <string name="focus_locked">נעול</string>
+    <string name="focus_manual">ידני</string>
+    <string name="focus_action_lock">נעילת המיקוד על מרכז התמונה</string>
+    <string name="focus_action_auto">חזרה למיקוד אוטומטי</string>
+    <string name="focus_slider_desc">מרחק המיקוד</string>
+    <string name="focus_near_desc">מיקוד קרוב יותר</string>
+    <string name="focus_far_desc">מיקוד רחוק יותר</string>
+    <string name="focus_spoken_far">רחוק</string>
+    <plurals name="focus_spoken_cm">
+        <item quantity="one">סנטימטר אחד</item>
+        <item quantity="two">%1$d סנטימטרים</item>
+        <item quantity="other">%1$d סנטימטרים</item>
+    </plurals>
+    <string name="focus_spoken_m">%1$s מטרים</string>
+    <string name="focus_spoken_percent">%1$d%% מהדרך לרחוק</string>
 
     <!-- When the camera can't start -->
     <string name="error_no_camera">בטלפון הזה אין מצלמה אחורית, ולכן הזכוכית המגדלת לא יכולה לפעול.</string>

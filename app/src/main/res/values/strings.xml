@@ -13,7 +13,7 @@
     <string name="permission_open_settings">Open settings</string>
 
     <!-- Camera picture -->
-    <string name="preview_desc">Camera picture. Tap to focus.</string>
+    <string name="preview_desc">Camera picture. Tap to focus there and lock it.</string>
 
     <!-- Zoom. %1$s is the zoom with one decimal, for example 3.2. -->
     <string name="zoom_label">%1$s×</string>
@@ -30,6 +30,25 @@
     <string name="light_none_desc">Light not available: this phone\'s rear camera has no flash</string>
     <string name="state_on">On</string>
     <string name="state_off">Off</string>
+
+    <!-- Focus. The button shows the mode; TalkBack says "Focus, Auto". -->
+    <string name="focus_desc">Focus</string>
+    <string name="focus_auto">Auto</string>
+    <string name="focus_locked">Locked</string>
+    <string name="focus_manual">Manual</string>
+    <string name="focus_action_lock">lock the focus on the middle of the picture</string>
+    <string name="focus_action_auto">go back to auto focus</string>
+    <!-- The focus slider, near to far (only on phones that support manual focus) -->
+    <string name="focus_slider_desc">Focus distance</string>
+    <string name="focus_near_desc">Focus nearer</string>
+    <string name="focus_far_desc">Focus farther</string>
+    <string name="focus_spoken_far">Far</string>
+    <plurals name="focus_spoken_cm">
+        <item quantity="one">%1$d centimetre</item>
+        <item quantity="other">%1$d centimetres</item>
+    </plurals>
+    <string name="focus_spoken_m">%1$s metres</string>
+    <string name="focus_spoken_percent">%1$d%% of the way to far</string>
 
     <!-- When the camera can't start -->
     <string name="error_no_camera">This phone has no rear camera, so the magnifier can\'t work.</string>
