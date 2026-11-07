@@ -67,6 +67,8 @@ used only on the phone. A picture is saved only when you tap Save (into
 `Pictures/Bukin Magnifier`) and shared only when you tap Share, with the app you
 pick. Android's own backup may copy the three remembered settings.
 
+Live once the `gh-pages` branch is published (owner's OK):
+
 - Privacy policy: https://elibukin.github.io/magnifier/privacy-policy.html
   (English and Hebrew; source `docs/privacy-policy.md` and `.he.md`)
 - Website: https://elibukin.github.io/magnifier/ (source `docs/site/`)
@@ -83,7 +85,9 @@ hold in the manifest and the code).
 checked by `python3 scripts/check-listing.py`), Data safety, release notes,
 content-rating notes, the owner's Play Console checklist, and the graphics
 (`assets/`; `python3 scripts/store-shots.py` composes the screenshots and the
-feature graphic). Open-source licences: `THIRD_PARTY_NOTICES.md`.
+feature graphic). The launcher icon, Play's 512 px icon and the site's favicon
+all come from `scripts/icon_art.py` through `python3 scripts/make-icon.py
+<A|B|C>`. Open-source licences: `THIRD_PARTY_NOTICES.md`.
 
 ## Building
 
