@@ -48,6 +48,13 @@ class FocusModeTest {
     }
 
     @Test
+    fun aCameraThatIgnoresManualFocusGoesBackToAuto() {
+        assertEquals(FocusMode.AUTO, FocusMode.MANUAL.after(FocusEvent.MANUAL_IGNORED))
+        // Its slider is gone, so the slider can't bring Manual back.
+        assertEquals(FocusMode.AUTO, FocusMode.AUTO.after(FocusEvent.FOCUS_SLIDER, manual = false))
+    }
+
+    @Test
     fun aTypicalSession() {
         var mode = FocusMode.AUTO
         mode = mode.after(FocusEvent.TAP_PICTURE)

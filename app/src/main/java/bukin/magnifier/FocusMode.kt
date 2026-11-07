@@ -30,7 +30,7 @@ enum class FocusMode(
         // A toggle: back to Auto, or from Auto lock the focus on the middle of the picture.
         FocusEvent.FOCUS_BUTTON -> if (this == AUTO) LOCKED else AUTO
         FocusEvent.FOCUS_SLIDER -> if (manualSupported) MANUAL else this
-        FocusEvent.LEFT_APP, FocusEvent.CAMERA_RESTARTED -> AUTO
+        FocusEvent.LEFT_APP, FocusEvent.CAMERA_RESTARTED, FocusEvent.MANUAL_IGNORED -> AUTO
     }
 }
 
@@ -50,4 +50,7 @@ enum class FocusEvent {
 
     /** The camera was bound afresh ("Try again"). */
     CAMERA_RESTARTED,
+
+    /** The camera turned out to ignore manual focus (see [ManualFocusGuard]): the slider goes. */
+    MANUAL_IGNORED,
 }

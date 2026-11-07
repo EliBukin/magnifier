@@ -2,7 +2,6 @@ package bukin.magnifier
 
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraMetadata
-import android.hardware.camera2.CaptureRequest
 import kotlin.math.roundToInt
 
 /**
@@ -65,21 +64,17 @@ data class ManualFocus(
         fun step(value: Float, steps: Int): Float = (value + steps * STEP).coerceIn(0f, SLIDER_MAX)
 
         /**
-         * Manual focus for a camera with these characteristics, or null when it doesn't
-         * officially support it. All three must hold:
-         * - `CONTROL_AF_AVAILABLE_MODES` has `CONTROL_AF_MODE_OFF`;
-         * - `LENS_INFO_MINIMUM_FOCUS_DISTANCE` > 0 (0 or missing = fixed focus);
-         * - `LENS_FOCUS_DISTANCE` is among the capture request keys the camera accepts.
+         * Manual focus for a camera with these characteristics, or null when it can't have it:
+         * - `CONTROL_AF_AVAILABLE_MODES` must have `CONTROL_AF_MODE_OFF`;
+         * - `LENS_INFO_MINIMUM_FOCUS_DISTANCE` must be > 0 (0 or missing = fixed focus).
+         *
+         * The capture request keys aren't checked: that list can be wrong. The A20 leaves
+         * `android.lens.focusDistance` out (it lists `focalLength` twice instead) yet moves the
+         * lens as asked. [ManualFocusGuard] catches a camera that really ignores it.
          */
-        fun check(
-            afModes: IntArray?,
-            minimumFocusDistance: Float?,
-            acceptsFocusDistance: Boolean,
-            calibration: Int?,
-        ): ManualFocus? {
+        fun check(afModes: IntArray?, minimumFocusDistance: Float?, calibration: Int?): ManualFocus? {
             if (afModes == null || CameraMetadata.CONTROL_AF_MODE_OFF !in afModes) return null
             if (minimumFocusDistance == null || !minimumFocusDistance.isFinite() || minimumFocusDistance <= 0f) return null
-            if (!acceptsFocusDistance) return null
             val calibrated = calibration == CameraMetadata.LENS_INFO_FOCUS_DISTANCE_CALIBRATION_APPROXIMATE ||
                 calibration == CameraMetadata.LENS_INFO_FOCUS_DISTANCE_CALIBRATION_CALIBRATED
             return ManualFocus(minimumFocusDistance, calibrated)
@@ -89,7 +84,6 @@ data class ManualFocus(
         fun from(characteristics: CameraCharacteristics): ManualFocus? = check(
             afModes = characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES),
             minimumFocusDistance = characteristics.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE),
-            acceptsFocusDistance = CaptureRequest.LENS_FOCUS_DISTANCE in characteristics.availableCaptureRequestKeys,
             calibration = characteristics.get(CameraCharacteristics.LENS_INFO_FOCUS_DISTANCE_CALIBRATION),
         )
     }

@@ -97,6 +97,11 @@ class MainActivity : AppCompatActivity() {
     @Volatile
     internal var manualFocus: ManualFocus? = null
 
+    /** Checks that the camera really applies manual focus; null without manual focus. */
+    @Volatile
+    private var focusGuard: ManualFocusGuard? = null
+    private val focusGuardTimeout = Runnable { checkFocusGuardTimeout() }
+
     /**
      * Set when the app leaves the screen. The camera is already closing then, so it can't take
      * the return to Auto; it gets it again when it reopens.
@@ -245,6 +250,7 @@ class MainActivity : AppCompatActivity() {
         camera = bound
         hasFlashUnit = bound.cameraInfo.hasFlashUnit()
         manualFocus = readManualFocus(bound.cameraInfo)
+        focusGuard = manualFocus?.let { ManualFocusGuard(it.minimumFocusDiopters) }
         debugLog("manual focus: $manualFocus")
         bound.cameraInfo.zoomState.observe(this) { renderZoom() }
         bound.cameraInfo.torchState.observe(this) { state ->
@@ -272,8 +278,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Manual focus for the bound camera: only when it officially supports it (see
-     * [ManualFocus.check]).
+     * Manual focus for the bound camera, from its characteristics (see [ManualFocus.check]);
+     * [ManualFocusGuard] then checks that the camera really applies it.
      */
     @OptIn(ExperimentalCamera2Interop::class)
     private fun readManualFocus(info: CameraInfo): ManualFocus? = try {
@@ -314,6 +320,8 @@ class MainActivity : AppCompatActivity() {
         hasFlashUnit = null
         torchState = null
         manualFocus = null
+        focusGuard = null
+        binding.root.removeCallbacks(focusGuardTimeout)
         showProblem(null)
         renderZoom()
         renderTorch()
@@ -564,6 +572,11 @@ class MainActivity : AppCompatActivity() {
         focusMode = new
         val generation = ++focusGeneration
         if (event == FocusEvent.LEFT_APP) resetFocusOnOpen = true
+        // Leaving Manual before the check has a verdict: no verdict, check again next time.
+        if (old == FocusMode.MANUAL && new != FocusMode.MANUAL) {
+            focusGuard?.cancelCheck()
+            binding.root.removeCallbacks(focusGuardTimeout)
+        }
         val cam = camera
         if (cam != null) {
             when (new) {
@@ -627,6 +640,28 @@ class MainActivity : AppCompatActivity() {
             .setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, diopters)
             .build()
         Camera2CameraControl.from(cam.cameraControl).setCaptureRequestOptions(options).logFailure("manual focus")
+        val guard = focusGuard ?: return
+        val wasIdle = guard.state == ManualFocusGuard.State.IDLE
+        guard.onRequest(diopters, SystemClock.elapsedRealtime())
+        if (wasIdle && guard.state == ManualFocusGuard.State.CHECKING) {
+            binding.root.removeCallbacks(focusGuardTimeout)
+            binding.root.postDelayed(focusGuardTimeout, ManualFocusGuard.TIMEOUT_MS + FOCUS_GUARD_SLACK_MS)
+        }
+    }
+
+    /** The guard's time is up: fails it if no frame echoed the manual focus. */
+    private fun checkFocusGuardTimeout() {
+        val guard = focusGuard ?: return
+        if (guard.onTimeout(SystemClock.elapsedRealtime()) == ManualFocusGuard.State.FAILED) onManualFocusIgnored(guard)
+    }
+
+    /** The camera ignores manual focus: hide the slider for this camera and go back to Auto. */
+    private fun onManualFocusIgnored(guard: ManualFocusGuard) {
+        if (guard !== focusGuard || manualFocus == null) return
+        Log.w(TAG, "Manual focus turned off for this camera: ${guard.failure}")
+        manualFocus = null
+        binding.root.removeCallbacks(focusGuardTimeout)
+        onFocusEvent(FocusEvent.MANUAL_IGNORED)
     }
 
     @OptIn(ExperimentalCamera2Interop::class)
@@ -638,7 +673,21 @@ class MainActivity : AppCompatActivity() {
      * autofocus put the lens, so taking it over doesn't jump the focus.
      */
     private fun onFrameResult(result: TotalCaptureResult) {
-        val diopters = result.get(CaptureResult.LENS_FOCUS_DISTANCE) ?: return
+        val guard = focusGuard
+        if (guard != null && guard.state == ManualFocusGuard.State.CHECKING) {
+            val verdict = guard.onResult(
+                result.get(CaptureResult.CONTROL_AF_MODE),
+                result.get(CaptureResult.LENS_FOCUS_DISTANCE),
+                SystemClock.elapsedRealtime(),
+            )
+            when (verdict) {
+                ManualFocusGuard.State.CONFIRMED -> debugLog("manual focus confirmed by the frames")
+                ManualFocusGuard.State.FAILED -> binding.root.post { onManualFocusIgnored(guard) }
+                else -> Unit
+            }
+        }
+        // Some cameras (the A20) report -1 when they don't know the distance.
+        val diopters = result.get(CaptureResult.LENS_FOCUS_DISTANCE)?.takeIf { it >= 0f } ?: return
         val previous = lensDiopters
         lensDiopters = diopters
         if (manualFocus == null) return
@@ -738,6 +787,9 @@ class MainActivity : AppCompatActivity() {
         /** The focus slider follows the lens at most this often, and only for a change this big. */
         private const val FOCUS_SYNC_MS = 250L
         private const val FOCUS_SYNC_DIOPTERS = 0.05f
+
+        /** The guard's timeout runs a little after its deadline, so the last frames count. */
+        private const val FOCUS_GUARD_SLACK_MS = 100L
 
         /** Unit tests turn this off: Robolectric has no camera for CameraX to open. */
         @VisibleForTesting
