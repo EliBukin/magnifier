@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Phones 360dp to 400dp wide (a 720 x 1560 screen at xhdpi is 360dp). -->
+    <dimen name="side_button">58dp</dimen>
+    <dimen name="freeze_button">88dp</dimen>
+    <dimen name="freeze_rise">-30dp</dimen>
+    <dimen name="ring_centre_width">160dp</dimen>
+    <dimen name="ring_centre_bottom">36dp</dimen>
+    <dimen name="ring_value_height">44dp</dimen>
+</resources>

@@ -261,6 +261,32 @@ class MainActivityTest {
         assertTrue(g.yFor(0f) + LensRingView.THUMB_RADIUS_DP * density <= sideTop)
     }
 
+    @Test
+    @Config(qualifiers = "w320dp-h640dp-port-hdpi")
+    fun onASmall320dpPhoneEveryButtonStillFitsAndIsBigEnough() {
+        shadowOf(app).grantPermissions(Manifest.permission.CAMERA)
+        val activity = launch().get()
+        activity.relayout()
+        val density = activity.resources.displayMetrics.density
+        val width = activity.findViewById<View>(R.id.root).width
+        val row = listOf(R.id.brightnessButton, R.id.lightButton, R.id.freezeButton, R.id.focusButton, R.id.colourButton)
+        activity.assertTargets(row)
+        val rowView = activity.findViewById<View>(R.id.actionRow)
+        val panel = activity.findViewById<View>(R.id.panel)
+        for (id in row) {
+            val v = activity.findViewById<View>(id)
+            val left = panel.left + rowView.left + v.left
+            assertTrue("${activity.resources.getResourceEntryName(id)} inside the screen", left >= 0 && left + v.width <= width)
+        }
+        // Buttons don't overlap.
+        val lefts = row.map { activity.findViewById<View>(it) }
+        for (i in 0 until lefts.size - 1) assertTrue(lefts[i].right <= lefts[i + 1].left)
+        val share = (activity.findViewById<View>(R.id.controls).height + 48 * density) / activity.findViewById<View>(R.id.root).height
+        // Not the 40% target (that is for 720 x 1560), but well under half of a short 5:3 screen.
+        assertTrue("the panel covers ${share * 100}%", share <= 0.45f)
+        println("320 x 640dp: the panel covers ${share * 100}% with a 48dp navigation bar")
+    }
+
     /** Pretends the camera has manual focus, so the focus ring is possible (Robolectric has no camera). */
     private fun MainActivity.showFocusRing() {
         manualFocus = ManualFocus(minimumFocusDiopters = 10f, calibrated = true)
