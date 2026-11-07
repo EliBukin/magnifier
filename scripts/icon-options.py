@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Draws the three launcher-icon drafts side by side, for the owner to choose one.
 
-    python3 scripts/icon-options.py <out_dir>
+    python3 scripts/icon-options.py <out_dir> [KEYS] [SHEET]
 
-Writes <out_dir>/icon-options.png (each draft large, in the common launcher
+KEYS picks the drafts (default ABC), SHEET the sheet's file name (default
+icon-options.png). Writes <out_dir>/<SHEET> (each draft large, in the common launcher
 masks, as a themed icon, and at real small sizes on a launcher-like home
 screen) and, per draft, <out_dir>/icon-options/<key>/ with the 512 x 512 Play
 preview and the three VectorDrawable layers. The art itself is in icon_art.py.
@@ -71,10 +72,18 @@ def column(design, width):
     title = ImageFont.truetype(FONT_BOLD, 30)
     small = ImageFont.truetype(FONT, 15)
     d.text((24, 18), f"{design.key}. {design.name}", font=title, fill="white")
-    d.text((24, 58), design.idea, font=small, fill="#CFCFCF")
+    words, lines = design.idea.split(), [""]
+    for w in words:  # wrap the idea to the column
+        trial = (lines[-1] + " " + w).strip()
+        if d.textlength(trial, font=small) > width - 48:
+            lines.append(w)
+        else:
+            lines[-1] = trial
+    for i, line in enumerate(lines[:2]):
+        d.text((24, 58 + i * 18), line, font=small, fill="#CFCFCF")
 
     big = pil(design, 360, mask="rounded")  # roughly how Play shows the 512 icon
-    col.paste(big, ((width - 360) // 2, 92), big)
+    col.paste(big, ((width - 360) // 2, 100), big)
 
     y = 470
     d.text((24, y), "Launcher masks (circle, squircle, rounded square), 96 px", font=small, fill="#CFCFCF")
@@ -110,11 +119,13 @@ def column(design, width):
 
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else "."
+    keys = sys.argv[2] if len(sys.argv) > 2 else "ABC"
+    sheet_name = sys.argv[3] if len(sys.argv) > 3 else "icon-options.png"
     os.makedirs(out, exist_ok=True)
     width = 520
     columns = []
-    for key, make in art.DESIGNS.items():
-        design = make()
+    for key in keys:
+        design = art.DESIGNS[key]()
         fg, mono = art.safe_zone_report(design)
         assert fg <= art.SAFE_RADIUS + 1e-6 and mono <= art.SAFE_RADIUS + 1e-6, (key, fg, mono)
         print(f"{key}: foreground reaches {fg:.1f}, monochrome {mono:.1f} (safe zone {art.SAFE_RADIUS})")
@@ -133,7 +144,7 @@ def main():
     sheet = Image.new("RGB", (width * len(columns) + 16 * (len(columns) + 1), columns[0].height + 32), "#1A1A1A")
     for i, c in enumerate(columns):
         sheet.paste(c, (16 + i * (width + 16), 16))
-    path = os.path.join(out, "icon-options.png")
+    path = os.path.join(out, sheet_name)
     sheet.save(path)
     print(path)
 

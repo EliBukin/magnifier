@@ -446,4 +446,108 @@ def design_c():
                   [beam], fg, mono, BLACK)
 
 
-DESIGNS = {"A": design_a, "B": design_b, "C": design_c}
+# ---------------------------------------------------------------- second round (owner: "4 new examples")
+
+TRACK = "#8A8A8A"  # the lens ring's grey track in the app (LensRingView)
+PAPER = "#FFFFFF"
+
+
+def _turn(points, cx, cy, degrees):
+    """Points (relative to an origin) turned by `degrees` (clockwise on screen) and moved to (cx, cy)."""
+    a = math.radians(degrees)
+    c, s = math.cos(a), math.sin(a)
+    return [(cx + x * c - y * s, cy + x * s + y * c) for x, y in points]
+
+
+def design_d():
+    """Lens-ring dial: the app's own dial as the glass: a grey track, a yellow fill, a white thumb."""
+    cx = cy = 50.0
+    r, ring = 18.0, 7.0
+    hx1, hy1, hx2, hy2 = _handle(cx, cy, r, ring, 73.5)
+    fg = [Line(hx1, hy1, hx2, hy2, YELLOW, 9.0),
+          Circle(cx, cy, r, stroke=TRACK, width=ring),
+          Arc(cx, cy, r, 135, 290, YELLOW, ring, cap="butt")]
+    # Ticks inside the ring, across its top, like the dial's scale.
+    for ang in range(180, 361, 45):
+        a = math.radians(ang)
+        fg.append(Line(cx + 7.5 * math.cos(a), cy + 7.5 * math.sin(a),
+                       cx + 11.5 * math.cos(a), cy + 11.5 * math.sin(a), WHITE, 2.6))
+    tx, ty = cx + r * math.cos(math.radians(290)), cy + r * math.sin(math.radians(290))
+    fg.append(Circle(tx, ty, 5.6, fill=WHITE, stroke=BLACK, width=1.6))
+    mono = [Line(hx1, hy1, hx2, hy2, WHITE, 9.0), Circle(cx, cy, r, stroke=WHITE, width=ring),
+            Circle(tx, ty, 6.4, fill=WHITE)]
+    mono += [Line(l.x1, l.y1, l.x2, l.y2, WHITE, l.width) for l in fg if isinstance(l, Line) and l.width < 3.0]
+    return Design("D", "Lens-ring dial", "the app's own dial as the glass: grey track, yellow fill, white thumb",
+                  [], fg, mono, BLACK)
+
+
+def design_e():
+    """Magnified page: a yellow page of small print; under the glass the lines are big and bold."""
+    # Small print across the whole tile (background layer: it may run to the edges).
+    rows = []
+    lengths = [(10, 98), (10, 80), (10, 94), (10, 60), (10, 98), (10, 88), (10, 70), (10, 96), (10, 84), (10, 52)]
+    for i, (x0, x1) in enumerate(lengths):
+        y = 14 + i * 9
+        rows.append(Line(x0, y, x1, y, "#7A6420", 2.4))
+    cx, cy = 51.0, 50.0
+    r, ring = 17.5, 5.5
+    hx1, hy1, hx2, hy2 = _handle(cx, cy, r, ring, 74.5)
+    fg = [Line(hx1, hy1, hx2, hy2, BLACK, 9.0),
+          Circle(cx, cy, r + ring / 2, fill=PAPER),  # the glass covers the small print
+          Circle(cx, cy, r, stroke=BLACK, width=ring)]
+    big = []
+    for dy, shorten in ((-8.0, 0.0), (0.0, 0.0), (8.0, 6.0)):
+        half = math.sqrt((r - ring / 2) ** 2 - dy ** 2) - 3.5
+        big.append(Line(cx - half, cy + dy, cx + half - shorten, cy + dy, BLACK, 4.6))
+    fg += big
+    mono = [Line(hx1, hy1, hx2, hy2, WHITE, 9.0), Circle(cx, cy, r, stroke=WHITE, width=ring),
+            *[Line(b.x1, b.y1, b.x2, b.y2, WHITE, b.width) for b in big]]
+    return Design("E", "Magnified page", "yellow page of small print; under the glass the lines are big and bold",
+                  rows, fg, mono, YELLOW)
+
+
+def design_f():
+    """Bulb lens: a light bulb whose round glass is the lens, its screw base the handle."""
+    # Drawn pointing down in its own coordinates, then turned so the base points down and right.
+    ox, oy, turn = 49.0, 49.0, -45.0
+    r = 16.0
+    neck = [(-8.6, 12.0), (8.6, 12.0), (5.6, 21.0), (-5.6, 21.0)]
+    stripes = [[(-6.4, y), (6.4, y), (6.4, y + 3.0), (-6.4, y + 3.0)] for y in (22.2, 26.2, 30.2)]
+    tip = [(-3.6, 34.2), (3.6, 34.2), (2.0, 37.4), (-2.0, 37.4)]
+    fg = [Poly(_turn(neck, ox, oy, turn), "#E6E6E6")]
+    fg += [Poly(_turn(sp, ox, oy, turn), "#BDBDBD") for sp in stripes]
+    fg.append(Poly(_turn(tip, ox, oy, turn), "#9E9E9E"))
+    fg.append(Circle(ox, oy, r, fill=YELLOW, stroke=WHITE, width=3.6))
+    fg.append(Arc(ox, oy, 10.0, 195, 250, WHITE, 3.0))  # the glint
+    # Three short rays: it gives light.
+    rays = []
+    for ang in (-135, -95, -175):
+        a = math.radians(ang)
+        r0, r1 = r + 4.2, r + 8.0
+        rays.append(Line(ox + r0 * math.cos(a), oy + r0 * math.sin(a),
+                         ox + r1 * math.cos(a), oy + r1 * math.sin(a), YELLOW, 3.2))
+    fg = rays + fg
+    mono = [Poly(_turn(neck, ox, oy, turn), WHITE), *[Poly(_turn(sp, ox, oy, turn), WHITE) for sp in stripes],
+            Poly(_turn(tip, ox, oy, turn), WHITE), Circle(ox, oy, r, stroke=WHITE, width=3.6),
+            Arc(ox, oy, 10.0, 195, 250, WHITE, 3.0), *[Line(l.x1, l.y1, l.x2, l.y2, WHITE, l.width) for l in rays]]
+    return Design("F", "Bulb lens", "a light bulb whose round glass is the lens and whose base is the handle",
+                  [], fg, mono, BLACK)
+
+
+def design_g():
+    """Glow ring: one bold yellow glass with a soft yellow glow around it, on black. Minimal."""
+    cx = cy = 49.0
+    r, ring = 15.5, 8.0
+    glow = [Circle(cx, cy, 30.0, fill="#14FFD54F"), Circle(cx, cy, 26.5, fill="#1FFFD54F"),
+            Circle(cx, cy, 23.5, fill="#33FFD54F")]
+    hx1, hy1, hx2, hy2 = _handle(cx, cy, r, ring, 72.0)
+    # The lens stays black: the glow is only around the glass.
+    fg = [Circle(cx, cy, r, fill=BLACK), Line(hx1, hy1, hx2, hy2, YELLOW, 11.0),
+          Circle(cx, cy, r, stroke=YELLOW, width=ring)]
+    mono = [Line(hx1, hy1, hx2, hy2, WHITE, 11.0), Circle(cx, cy, r, stroke=WHITE, width=ring)]
+    return Design("G", "Glow ring", "one bold yellow glass with a soft glow around it: minimal",
+                  glow, fg, mono, BLACK)
+
+
+DESIGNS = {"A": design_a, "B": design_b, "C": design_c, "D": design_d, "E": design_e, "F": design_f,
+           "G": design_g}
