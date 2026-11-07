@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Phones 400dp wide and more (the Galaxy A20 is 411dp): bigger round buttons and Freeze. -->
+    <dimen name="side_button">64dp</dimen>
+    <dimen name="freeze_button">96dp</dimen>
+    <dimen name="freeze_rise">-32dp</dimen>
+    <dimen name="ring_centre_width">180dp</dimen>
+    <dimen name="ring_centre_bottom">38dp</dimen>
+    <dimen name="ring_value_height">48dp</dimen>
+</resources>

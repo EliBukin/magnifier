@@ -16,10 +16,19 @@
     <!-- Zoom -->
     <string name="zoom_label">%1$s×</string>
     <string name="zoom_spoken">הגדלה פי %1$s</string>
-    <string name="zoom_slider_desc">הגדלה</string>
-    <string name="zoom_in_desc">הגדלה</string>
-    <string name="zoom_out_desc">הקטנה</string>
     <string name="zoom_unavailable">אין הגדלה</string>
+
+    <!-- The lens ring -->
+    <string name="ring_zoom">הגדלה</string>
+    <string name="ring_brightness">בהירות</string>
+    <string name="ring_focus">מיקוד</string>
+    <string name="ring_focus_desc">מרחק המיקוד</string>
+    <string name="zoom_state">פי %1$s</string>
+    <string name="ring_centre_spoken">%1$s, %2$s</string>
+    <string name="ring_back_to_zoom">הצגת ההגדלה בטבעת</string>
+    <string name="brightness_action_ring">כיוון הבהירות בטבעת</string>
+    <string name="focus_action_ring">כיוון מרחק המיקוד בטבעת</string>
+    <string name="state_unavailable">לא זמין</string>
 
     <!-- The LED light -->
     <string name="light_button">פנס</string>
@@ -36,9 +45,6 @@
     <string name="focus_manual">ידני</string>
     <string name="focus_action_lock">נעילת המיקוד על מרכז התמונה</string>
     <string name="focus_action_auto">חזרה למיקוד אוטומטי</string>
-    <string name="focus_slider_desc">מרחק המיקוד</string>
-    <string name="focus_near_desc">מיקוד קרוב יותר</string>
-    <string name="focus_far_desc">מיקוד רחוק יותר</string>
     <string name="focus_spoken_far">רחוק</string>
     <plurals name="focus_spoken_cm">
         <item quantity="one">סנטימטר אחד</item>
@@ -47,15 +53,12 @@
     </plurals>
     <string name="focus_spoken_m">%1$s מטרים</string>
     <string name="focus_spoken_percent">%1$d%% מהדרך לרחוק</string>
+    <string name="focus_short_cm">%1$d ס״מ</string>
+    <string name="focus_short_m">%1$s מ׳</string>
+    <string name="focus_short_percent">%1$d%%</string>
 
-    <!-- The adjust tabs -->
-    <string name="tab_brightness">בהירות</string>
-    <string name="tab_focus">מיקוד</string>
 
     <!-- Brightness -->
-    <string name="brightness_slider_desc">בהירות</string>
-    <string name="brightness_down_desc">כהה יותר</string>
-    <string name="brightness_up_desc">בהיר יותר</string>
     <string name="brightness_normal">רגיל</string>
     <plurals name="brightness_lighter">
         <item quantity="one">בהיר יותר בצעד אחד</item>

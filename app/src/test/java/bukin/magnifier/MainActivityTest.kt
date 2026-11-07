@@ -50,6 +50,10 @@ class MainActivityTest {
 
     private fun MainActivity.text(id: Int) = findViewById<TextView>(id).text.toString()
 
+    private object ContextCompatColor {
+        fun accent(activity: MainActivity) = androidx.core.content.ContextCompat.getColor(activity, R.color.accent)
+    }
+
     private fun MainActivity.keepsScreenOn() =
         window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0
 
@@ -165,18 +169,11 @@ class MainActivityTest {
         val labels = mapOf(
             R.id.previewView to "Camera picture. Tap to focus there and lock it.",
             R.id.frozenView to "Frozen picture. Pinch or double tap to zoom, drag to move around.",
+            R.id.lensRing to "Zoom",
+            R.id.brightnessButton to "Brightness",
             R.id.lightButton to "Light",
-            R.id.zoomSlider to "Zoom",
-            R.id.zoomIn to "Zoom in",
-            R.id.zoomOut to "Zoom out",
             R.id.focusButton to "Focus",
-            R.id.focusSlider to "Focus distance",
-            R.id.focusNear to "Focus nearer",
-            R.id.focusFar to "Focus farther",
             R.id.colourButton to "Colours",
-            R.id.brightnessSlider to "Brightness",
-            R.id.brightnessDown to "Darker",
-            R.id.brightnessUp to "Lighter",
             R.id.saveButton to "Save the whole picture",
             R.id.shareButton to "Share the whole picture",
         )
@@ -184,32 +181,37 @@ class MainActivityTest {
             assertEquals(label, activity.findViewById<View>(id).contentDescription?.toString())
         }
         // Buttons whose text is their label.
-        val texts = mapOf(R.id.freezeButton to "Freeze", R.id.tabBrightness to "Brightness", R.id.tabFocus to "Focus", R.id.errorRetry to "Try again")
+        val texts = mapOf(R.id.freezeButton to "Freeze", R.id.errorRetry to "Try again")
         for ((id, text) in texts) assertEquals(text, activity.text(id))
-        // No camera yet: the zoom tab says what it is.
-        assertEquals("Zoom", activity.text(R.id.tabZoom))
+        // No camera yet: the ring's centre says what it adjusts, with no value.
+        assertEquals("Zoom", activity.text(R.id.ringCaption))
+        assertEquals("", activity.text(R.id.ringValue))
+        assertEquals("Zoom", activity.findViewById<View>(R.id.ringCentre).contentDescription)
+        // The brightness button shows the level, and says it.
+        assertEquals("0", activity.text(R.id.brightnessButton))
+        assertEquals("Normal", ViewCompat.getStateDescription(activity.findViewById(R.id.brightnessButton)))
+        assertEquals("adjust the brightness on the ring", activity.clickLabel(R.id.brightnessButton))
     }
 
     @Test
-    fun touchTargetsAreAtLeast56dpInEveryRowAndMode() {
+    fun touchTargetsAreAtLeast56dpLiveAndFrozen() {
         shadowOf(app).grantPermissions(Manifest.permission.CAMERA)
         val activity = launch().get()
-        activity.showFocusSlider()
-        val tabs = listOf(R.id.tabZoom, R.id.tabBrightness, R.id.tabFocus)
-        val live = listOf(R.id.colourButton, R.id.lightButton, R.id.freezeButton, R.id.focusButton)
-        val rows = mapOf(
-            R.id.tabZoom to listOf(R.id.zoomOut, R.id.zoomSlider, R.id.zoomIn),
-            R.id.tabBrightness to listOf(R.id.brightnessDown, R.id.brightnessSlider, R.id.brightnessUp),
-            R.id.tabFocus to listOf(R.id.focusNear, R.id.focusSlider, R.id.focusFar),
-        )
-        for ((tab, row) in rows) {
-            activity.findViewById<View>(tab).performClick()
-            activity.relayout()
-            activity.assertTargets(tabs + live + row)
-        }
+        activity.showFocusRing()
+        val live = listOf(R.id.brightnessButton, R.id.lightButton, R.id.freezeButton, R.id.focusButton, R.id.colourButton)
+        activity.assertTargets(live)
+        // The ring's centre, a button back to zoom while the ring adjusts something else.
+        activity.findViewById<View>(R.id.brightnessButton).performClick()
+        activity.relayout()
+        activity.assertTargets(live + R.id.ringCentre)
         activity.freezeForTest(Bitmap.createBitmap(72, 156, Bitmap.Config.ARGB_8888))
         activity.relayout()
-        activity.assertTargets(listOf(R.id.colourButton, R.id.saveButton, R.id.freezeButton, R.id.shareButton, R.id.zoomOut, R.id.zoomSlider, R.id.zoomIn))
+        activity.assertTargets(listOf(R.id.brightnessButton, R.id.saveButton, R.id.freezeButton, R.id.shareButton, R.id.colourButton))
+        // The ring: its band is 56dp thick, and as wide as the panel.
+        val ring = activity.findViewById<LensRingView>(R.id.lensRing)
+        val density = activity.resources.displayMetrics.density
+        assertTrue(2 * ring.geometry!!.bandHalf / density >= 48f)
+        assertEquals(348f, ring.width / density, 0.5f)
     }
 
     private fun MainActivity.assertTargets(ids: List<Int>) {
@@ -219,7 +221,7 @@ class MainActivityTest {
             val name = resources.getResourceEntryName(id)
             assertTrue("$name is showing", view.isShown)
             assertTrue("height of $name: ${view.height / density}", view.height / density >= 56f)
-            if (view is MaterialButton) assertTrue("width of $name: ${view.width / density}", view.width / density >= 56f)
+            assertTrue("width of $name: ${view.width / density}", view.width / density >= 56f)
         }
     }
 
@@ -234,100 +236,181 @@ class MainActivityTest {
     fun thePanelCoversAtMostFortyPercentAndFreezeIsTheBiggestAction() {
         shadowOf(app).grantPermissions(Manifest.permission.CAMERA)
         val activity = launch().get()
-        activity.showFocusSlider()
+        activity.showFocusRing()
         activity.relayout()
         val density = activity.resources.displayMetrics.density
+        // 360 x 780dp: a 720 x 1560 screen at xhdpi.
         val root = activity.findViewById<View>(R.id.root).height
+        assertEquals(780f, root / density, 1f)
         val panel = activity.findViewById<View>(R.id.controls).height
         // With a 48dp navigation bar below it, as on the A20.
         val share = (panel + 48 * density) / root
         assertTrue("the panel covers ${share * 100}%", share <= 0.40f)
         val freeze = activity.findViewById<View>(R.id.freezeButton)
-        for (id in listOf(R.id.colourButton, R.id.lightButton, R.id.focusButton)) {
-            assertTrue(freeze.width > activity.findViewById<View>(id).width * 1.4f)
+        for (id in listOf(R.id.brightnessButton, R.id.lightButton, R.id.focusButton, R.id.colourButton)) {
+            val side = activity.findViewById<View>(id)
+            assertTrue(freeze.width > side.width * 1.4f)
+            // Freeze rises into the ring; all bottoms line up.
+            assertEquals(freeze.bottom, side.bottom)
+            assertTrue(freeze.top < side.top)
         }
+        // The side buttons sit below the ring's ends and their thumb.
+        val ring = activity.findViewById<LensRingView>(R.id.lensRing)
+        val g = ring.geometry!!
+        val sideTop = activity.findViewById<View>(R.id.brightnessButton).top + activity.findViewById<View>(R.id.actionRow).top
+        assertTrue(g.yFor(0f) + LensRingView.THUMB_RADIUS_DP * density <= sideTop)
     }
 
-    /** Pretends the camera has manual focus, so the focus row shows (Robolectric has no camera). */
-    private fun MainActivity.showFocusSlider() {
+    /** Pretends the camera has manual focus, so the focus ring is possible (Robolectric has no camera). */
+    private fun MainActivity.showFocusRing() {
         manualFocus = ManualFocus(minimumFocusDiopters = 10f, calibrated = true)
         onFocusEvent(FocusEvent.CAMERA_RESTARTED) // re-renders, staying in Auto
         relayout()
     }
 
+    private fun MainActivity.clickLabel(id: Int): String? {
+        val info = AccessibilityNodeInfoCompat.wrap(findViewById<View>(id).createAccessibilityNodeInfo())
+        return info.actionList.firstOrNull { it.id == AccessibilityNodeInfoCompat.ACTION_CLICK }?.label?.toString()
+    }
+
     private fun MainActivity.focusButtonSays(): Triple<String, String?, String?> {
         val button = findViewById<MaterialButton>(R.id.focusButton)
-        val info = AccessibilityNodeInfoCompat.wrap(button.createAccessibilityNodeInfo())
-        val click = info.actionList.firstOrNull { it.id == AccessibilityNodeInfoCompat.ACTION_CLICK }
-        return Triple(button.text.toString(), ViewCompat.getStateDescription(button)?.toString(), click?.label?.toString())
+        return Triple(button.text.toString(), ViewCompat.getStateDescription(button)?.toString(), clickLabel(R.id.focusButton))
     }
 
     @Test
-    fun theFocusStartsInAutoWithNoSliderWhereThereIsNoManualFocus() {
+    fun withoutManualFocusTheFocusButtonLocksAndUnlocksAndTheRingKeepsZoom() {
         shadowOf(app).grantPermissions(Manifest.permission.CAMERA)
         val activity = launch().get()
         assertEquals(FocusMode.AUTO, activity.focusMode)
         assertEquals(Triple("Auto", "Auto", "lock the focus on the middle of the picture"), activity.focusButtonSays())
-        assertFalse(activity.findViewById<View>(R.id.focusRow).isVisible)
-        assertFalse(activity.findViewById<View>(R.id.tabFocus).isVisible)
-        // Without manual focus, the slider can't take over.
+        // The old toggle: Auto -> Locked on the middle -> Auto. The ring stays on zoom.
+        activity.findViewById<View>(R.id.focusButton).performClick()
+        assertEquals(FocusMode.LOCKED, activity.focusMode)
+        assertEquals(RingMode.ZOOM, activity.ringMode)
+        assertEquals(Triple("Locked", "Locked", "go back to auto focus"), activity.focusButtonSays())
+        activity.findViewById<View>(R.id.focusButton).performClick()
+        assertEquals(FocusMode.AUTO, activity.focusMode)
+        // Without manual focus, nothing can take the focus to Manual or put it on the ring.
         activity.onFocusEvent(FocusEvent.FOCUS_SLIDER)
         assertEquals(FocusMode.AUTO, activity.focusMode)
+        activity.setRingMode(RingMode.FOCUS)
+        assertEquals(RingMode.ZOOM, activity.ringMode)
     }
 
     @Test
-    fun theFocusButtonShowsTheModeAndLeavingTheAppReturnsToAuto() {
+    fun withManualFocusTheFocusButtonPutsTheFocusOnTheRing() {
         shadowOf(app).grantPermissions(Manifest.permission.CAMERA)
         val controller = launch()
         val activity = controller.get()
-        activity.onFocusEvent(FocusEvent.TAP_PICTURE)
-        assertEquals(FocusMode.LOCKED, activity.focusMode)
-        assertEquals(Triple("Locked", "Locked", "go back to auto focus"), activity.focusButtonSays())
+        activity.showFocusRing()
+        val button = activity.findViewById<MaterialButton>(R.id.focusButton)
+        assertEquals(Triple("Auto", "Auto", "set the focus distance on the ring"), activity.focusButtonSays())
 
-        activity.showFocusSlider()
-        // The focus tab shows; its row only once it is chosen.
-        assertTrue(activity.findViewById<View>(R.id.tabFocus).isVisible)
-        assertFalse(activity.findViewById<View>(R.id.focusRow).isVisible)
-        activity.findViewById<View>(R.id.tabFocus).performClick()
-        assertTrue(activity.findViewById<View>(R.id.focusRow).isVisible)
-        assertFalse(activity.findViewById<View>(R.id.zoomRow).isVisible)
-        activity.onFocusEvent(FocusEvent.FOCUS_SLIDER)
+        // Auto: the ring goes to the focus distance; the centre says "Focus, Auto".
+        button.performClick()
+        assertEquals(RingMode.FOCUS, activity.ringMode)
+        assertEquals(FocusMode.AUTO, activity.focusMode)
+        assertEquals("Focus", activity.text(R.id.ringCaption))
+        assertEquals("Auto", activity.text(R.id.ringValue))
+        assertEquals("Focus distance", activity.findViewById<View>(R.id.lensRing).contentDescription)
+        assertEquals(Triple("Auto", "Auto", "show the zoom on the ring"), activity.focusButtonSays())
+
+        // Turning the ring is Manual, with the distance in the centre.
+        activity.onRingTurned(50f)
+        assertEquals(FocusMode.MANUAL, activity.focusMode)
+        assertEquals("20 cm", activity.text(R.id.ringValue))
+        assertEquals("20 centimetres", ViewCompat.getStateDescription(activity.findViewById(R.id.lensRing)))
         assertEquals(Triple("Manual", "Manual", "go back to auto focus"), activity.focusButtonSays())
 
-        // The button goes back to Auto.
-        activity.findViewById<View>(R.id.focusButton).performClick()
+        // The button goes back to Auto in one tap; the ring stays on the focus, showing "Auto".
+        button.performClick()
         assertEquals(FocusMode.AUTO, activity.focusMode)
+        assertEquals(RingMode.FOCUS, activity.ringMode)
+        assertEquals("Auto", activity.text(R.id.ringValue))
+        // Again: the ring back to zoom.
+        button.performClick()
+        assertEquals(RingMode.ZOOM, activity.ringMode)
 
+        // A tap on the picture locks; from Locked the button is "back to Auto", wherever the ring is.
         activity.onFocusEvent(FocusEvent.TAP_PICTURE)
+        assertEquals(Triple("Locked", "Locked", "go back to auto focus"), activity.focusButtonSays())
+        button.performClick()
+        assertEquals(FocusMode.AUTO, activity.focusMode)
+        assertEquals(RingMode.ZOOM, activity.ringMode)
+
+        // Leaving the app ends Manual.
+        button.performClick()
+        activity.onRingTurned(30f)
         controller.pause().stop()
         assertEquals(FocusMode.AUTO, activity.focusMode)
         controller.start().resume()
-        assertEquals(Triple("Auto", "Auto", "lock the focus on the middle of the picture"), activity.focusButtonSays())
+        assertEquals(Triple("Auto", "Auto", "show the zoom on the ring"), activity.focusButtonSays())
     }
 
     @Test
-    fun movingTheFocusSliderSwitchesToManual() {
+    fun theFocusRingStepsAndTakesOverEvenAtItsEnds() {
         shadowOf(app).grantPermissions(Manifest.permission.CAMERA)
         val activity = launch().get()
-        activity.showFocusSlider()
-        val slider = activity.findViewById<com.google.android.material.slider.Slider>(R.id.focusSlider)
-        slider.value = 40f
+        activity.showFocusRing()
+        activity.setRingMode(RingMode.FOCUS)
+        activity.onRingTurned(40f)
         assertEquals(FocusMode.MANUAL, activity.focusMode)
-        // The far button steps a twentieth towards far.
-        activity.findViewById<View>(R.id.focusFar).performClick()
-        assertEquals(45f, slider.value, 1e-4f)
-        activity.findViewById<View>(R.id.focusNear).performClick()
-        activity.findViewById<View>(R.id.focusNear).performClick()
-        assertEquals(35f, slider.value, 1e-4f)
+        // A step is a twentieth, towards far (+) or near (−).
+        activity.onRingStepped(1)
+        assertEquals(45f, activity.focusValue, 1e-4f)
+        activity.onRingStepped(-1)
+        activity.onRingStepped(-1)
+        assertEquals(35f, activity.focusValue, 1e-4f)
         // A tap on the picture locks the focus again.
         activity.onFocusEvent(FocusEvent.TAP_PICTURE)
         assertEquals(FocusMode.LOCKED, activity.focusMode)
-        // At an end of the slider, its button still takes over.
-        slider.value = 0f
+        // At the near end, a step still takes over.
+        activity.onRingTurned(0f)
         activity.onFocusEvent(FocusEvent.TAP_PICTURE)
-        activity.findViewById<View>(R.id.focusNear).performClick()
-        assertEquals(0f, slider.value, 1e-4f)
+        activity.onRingStepped(-1)
+        assertEquals(0f, activity.focusValue, 1e-4f)
         assertEquals(FocusMode.MANUAL, activity.focusMode)
+        assertEquals("10 cm", activity.text(R.id.ringValue))
+        // When the camera turns out to ignore manual focus, the ring goes back to zoom.
+        activity.manualFocus = null
+        activity.onFocusEvent(FocusEvent.MANUAL_IGNORED)
+        assertEquals(RingMode.ZOOM, activity.ringMode)
+        assertEquals(FocusMode.AUTO, activity.focusMode)
+    }
+
+    @Test
+    fun theBrightnessButtonAndTheCentreTakeTheRingThereAndBack() {
+        shadowOf(app).grantPermissions(Manifest.permission.CAMERA)
+        val activity = launch().get()
+        val brightness = activity.findViewById<MaterialButton>(R.id.brightnessButton)
+        val centre = activity.findViewById<View>(R.id.ringCentre)
+        assertEquals(RingMode.ZOOM, activity.ringMode)
+        assertFalse(centre.isClickable)
+        assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, centre.accessibilityLiveRegion)
+
+        brightness.performClick()
+        assertEquals(RingMode.BRIGHTNESS, activity.ringMode)
+        assertEquals("Brightness", activity.text(R.id.ringCaption))
+        assertEquals("0", activity.text(R.id.ringValue))
+        assertEquals("Brightness", activity.findViewById<View>(R.id.lensRing).contentDescription)
+        assertEquals("Normal", ViewCompat.getStateDescription(activity.findViewById(R.id.lensRing)))
+        assertEquals("show the zoom on the ring", activity.clickLabel(R.id.brightnessButton))
+        // The centre is now a button back to zoom, and says what it shows.
+        assertTrue(centre.isClickable)
+        assertEquals("Brightness, Normal", centre.contentDescription)
+        assertEquals("show the zoom on the ring", activity.clickLabel(R.id.ringCentre))
+        // Highlighted while on the ring.
+        assertEquals(ContextCompatColor.accent(activity), brightness.backgroundTintList!!.defaultColor)
+
+        centre.performClick()
+        assertEquals(RingMode.ZOOM, activity.ringMode)
+        assertEquals("Zoom", activity.text(R.id.ringCaption))
+        assertFalse(centre.isClickable)
+        // The active button again goes back too.
+        brightness.performClick()
+        brightness.performClick()
+        assertEquals(RingMode.ZOOM, activity.ringMode)
     }
 
     @Test
@@ -336,7 +419,7 @@ class MainActivityTest {
         val activity = launch().get()
         val light = activity.findViewById<MaterialButton>(R.id.lightButton)
         assertFalse(light.isEnabled)
-        assertFalse(activity.findViewById<View>(R.id.zoomSlider).isEnabled)
+        assertFalse(activity.findViewById<View>(R.id.lensRing).isEnabled)
         // No camera bound: the keys still change the volume.
         assertFalse(activity.volumeKeyTaken(KeyEvent.KEYCODE_VOLUME_UP))
     }

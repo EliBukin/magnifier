@@ -9,7 +9,7 @@ import androidx.annotation.StringRes
  * - [AUTO]: continuous autofocus, the camera refocuses by itself. Every launch starts here.
  * - [LOCKED]: a tap on the picture focused (and metered) there once, and the lens stays put
  *   until the next tap or until the user goes back to Auto.
- * - [MANUAL]: the focus slider sets the lens distance itself (only on phones that support it).
+ * - [MANUAL]: the focus ring sets the lens distance itself (only on phones that support it).
  */
 enum class FocusMode(
     /** The button's text, also spoken as its state after its label ("Focus"). */
@@ -24,7 +24,7 @@ enum class FocusMode(
     LOCKED(R.string.focus_locked, R.string.focus_action_auto, R.drawable.ic_focus_locked, highlighted = true),
     MANUAL(R.string.focus_manual, R.string.focus_action_auto, R.drawable.ic_focus_manual, highlighted = true);
 
-    /** The mode after [event]. [manualSupported]: the phone has the focus slider. */
+    /** The mode after [event]. [manualSupported]: the phone has the focus ring. */
     fun next(event: FocusEvent, manualSupported: Boolean): FocusMode = when (event) {
         FocusEvent.TAP_PICTURE -> LOCKED
         // A toggle: back to Auto, or from Auto lock the focus on the middle of the picture.
@@ -42,7 +42,7 @@ enum class FocusEvent {
     /** The focus button. */
     FOCUS_BUTTON,
 
-    /** The focus slider or its near / far buttons. */
+    /** The focus ring: turned, tapped, or adjusted by TalkBack. */
     FOCUS_SLIDER,
 
     /** The app left the screen (Home, another app, screen off). */
@@ -51,6 +51,6 @@ enum class FocusEvent {
     /** The camera was bound afresh ("Try again"). */
     CAMERA_RESTARTED,
 
-    /** The camera turned out to ignore manual focus (see [ManualFocusGuard]): the slider goes. */
+    /** The camera turned out to ignore manual focus (see [ManualFocusGuard]): the focus ring goes. */
     MANUAL_IGNORED,
 }

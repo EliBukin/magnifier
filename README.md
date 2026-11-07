@@ -7,30 +7,48 @@ phone unless you share a picture yourself.
 ## Features
 
 - **Live magnifier:** the rear camera fills the screen. The screen stays on while it shows.
-- **Zoom:** a slider with − and + buttons, pinch, or the volume keys, across
-  the camera's whole range. The number shows two decimals below 2× ("1.04×"),
-  so every step is visible.
+- **The lens ring:** a big arc at the bottom, like the ring on a camera lens. It
+  adjusts one thing at a time, named in its middle with the value in big yellow
+  ("Zoom 2.50×", "Brightness +3", "Focus 20 cm"):
+  - turn it by dragging anywhere along it; the whole arc is the whole range;
+  - tap it beside the thumb, or tap the icon at either end, for one step that way;
+  - with TalkBack it is a slider (swipe up or down to step);
+  - in Hebrew it runs from right to left.
+  - It shows the **zoom** unless you choose Brightness or Focus. To go back to
+    zoom, tap the middle of the ring or the chosen button again. The volume keys
+    and pinch zoom too, and bring the zoom back to the ring.
+- **Zoom:** the ring, pinch or the volume keys, across the camera's whole range.
+  The number shows two decimals below 2× ("1.04×"), so every step is visible.
 - **Focus:** auto focus at start. Tap the picture to focus there and lock it.
-  The Focus button switches Auto / Locked, and a near-to-far focus slider
-  appears on phones whose lens allows it (Manual).
+  The Focus button shows Auto / Locked / Manual:
+  - from Locked or Manual, one tap goes back to Auto;
+  - on phones whose lens allows manual focus, in Auto it puts the focus distance
+    on the ring (near to far); turning the ring is Manual. Tap Focus again, or the
+    middle of the ring, to go back to zoom;
+  - on other phones, in Auto it locks the focus on the middle of the picture.
 - **Light:** the LED torch on and off.
 - **Freeze:** shows the screen's picture at once, then a sharp full-resolution
-  photo in its place. Pinch, drag, double tap, −/+ or the volume keys zoom
+  photo in its place. The ring, pinch, drag, double tap or the volume keys zoom
   and move around it. **Live** goes back. The light stays as it was.
 - **Colours:** Normal, High contrast, Inverted, and Yellow on black. They apply
   to the live picture, the frozen picture and saved pictures, never to the controls.
-- **Brightness:** live, the camera's exposure; frozen, the picture's brightness.
-  It is hidden live (with the reason) on cameras without exposure control.
+- **Brightness:** the Brightness button puts it on the ring and shows the level
+  ("+3"). Live, the camera's exposure; frozen, the picture's brightness. "Lighter"
+  always makes the screen lighter, in every colour mode. On cameras without
+  exposure control the button says why it can't (live only).
 - **Save and share** (frozen picture only): the **whole** frozen photo, not just
   the zoomed-in part, with the colours and brightness as shown.
   - Save goes to `Pictures/Bukin Magnifier`. Android 10+ needs no permission;
     Android 7-9 ask for storage the first time you save.
   - Share opens the system share sheet.
-- **Remembers** the zoom, the light and the colour mode. Brightness and focus
-  start fresh every time.
-- **Easy to use:** big controls (56-76 dp) in three rows at the bottom, within
-  reach of one thumb, with Freeze the biggest. TalkBack labels and states on
-  every control. English and Hebrew (right to left).
+- **Remembers** the zoom, the light and the colour mode. Brightness, focus and
+  what the ring shows start fresh every time.
+- **Easy to use:** one row of big round buttons under the ring, within reach of
+  one thumb: Brightness, Light, **Freeze** (the biggest, in the middle), Focus,
+  Colours; frozen, Save and Share take the Light's and Focus's places. Every
+  button is at least 56dp (64dp on phones 400dp wide and up), the ring's touch
+  band is 56dp thick, and the panel covers under 40% of the screen. TalkBack
+  labels and states on every control. English and Hebrew (right to left).
 
 ## Building
 

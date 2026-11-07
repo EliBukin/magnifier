@@ -18,10 +18,22 @@
     <!-- Zoom. %1$s is the zoom: two decimals below 2 (1.25), one from 2 up (3.2). -->
     <string name="zoom_label">%1$s×</string>
     <string name="zoom_spoken">Zoom %1$s times</string>
-    <string name="zoom_slider_desc">Zoom</string>
-    <string name="zoom_in_desc">Zoom in</string>
-    <string name="zoom_out_desc">Zoom out</string>
     <string name="zoom_unavailable">No zoom</string>
+
+    <!-- The lens ring: the big arc that adjusts one thing at a time (zoom, brightness or focus).
+         Its centre says which, with the value. -->
+    <string name="ring_zoom">Zoom</string>
+    <string name="ring_brightness">Brightness</string>
+    <string name="ring_focus">Focus</string>
+    <string name="ring_focus_desc">Focus distance</string>
+    <!-- What TalkBack says for the ring\'s value while it zooms: "2.50 times". -->
+    <string name="zoom_state">%1$s times</string>
+    <!-- TalkBack: the ring\'s centre, "Brightness, 3 steps lighter". -->
+    <string name="ring_centre_spoken">%1$s, %2$s</string>
+    <string name="ring_back_to_zoom">show the zoom on the ring</string>
+    <string name="brightness_action_ring">adjust the brightness on the ring</string>
+    <string name="focus_action_ring">set the focus distance on the ring</string>
+    <string name="state_unavailable">Not available</string>
 
     <!-- The LED light -->
     <string name="light_button">Light</string>
@@ -38,10 +50,7 @@
     <string name="focus_manual">Manual</string>
     <string name="focus_action_lock">lock the focus on the middle of the picture</string>
     <string name="focus_action_auto">go back to auto focus</string>
-    <!-- The focus slider, near to far (only on phones that support manual focus) -->
-    <string name="focus_slider_desc">Focus distance</string>
-    <string name="focus_near_desc">Focus nearer</string>
-    <string name="focus_far_desc">Focus farther</string>
+    <!-- Focus distance on the ring, near to far (only on phones that support manual focus): spoken, and short for the ring's centre -->
     <string name="focus_spoken_far">Far</string>
     <plurals name="focus_spoken_cm">
         <item quantity="one">%1$d centimetre</item>
@@ -49,15 +58,12 @@
     </plurals>
     <string name="focus_spoken_m">%1$s metres</string>
     <string name="focus_spoken_percent">%1$d%% of the way to far</string>
+    <string name="focus_short_cm">%1$d cm</string>
+    <string name="focus_short_m">%1$s m</string>
+    <string name="focus_short_percent">%1$d%%</string>
 
-    <!-- The adjust tabs: which control the slider row shows. The zoom tab shows the zoom ("1.25×"). -->
-    <string name="tab_brightness">Brightness</string>
-    <string name="tab_focus">Focus</string>
 
-    <!-- Brightness: the camera\'s exposure live, the picture\'s brightness when frozen. -->
-    <string name="brightness_slider_desc">Brightness</string>
-    <string name="brightness_down_desc">Darker</string>
-    <string name="brightness_up_desc">Lighter</string>
+    <!-- Brightness: the camera\'s exposure live, the picture\'s brightness when frozen. The button and the ring\'s centre show the level ("+3"). -->
     <string name="brightness_normal">Normal</string>
     <plurals name="brightness_lighter">
         <item quantity="one">%1$d step lighter</item>

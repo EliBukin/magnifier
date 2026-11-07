@@ -64,206 +64,161 @@
         tools:text="Yellow on black"
         tools:visibility="visible" />
 
-    <!-- Every control at the bottom, within one thumb's reach, in three rows: what the slider
-         adjusts, the slider, and the actions (Freeze the biggest). -->
-    <LinearLayout
+    <!-- The panel at the bottom: the lens ring, with what it adjusts and its value inside it, and
+         one row of round buttons with Freeze, the biggest, in the middle. Touches on the panel's
+         empty parts stop here (ControlPanel), so they never focus the camera under it. -->
+    <bukin.magnifier.ControlPanel
         android:id="@+id/controls"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:background="@color/controls_scrim"
-        android:orientation="vertical"
-        android:paddingStart="@dimen/controls_padding"
-        android:paddingTop="@dimen/controls_padding"
-        android:paddingEnd="@dimen/controls_padding"
-        android:paddingBottom="@dimen/controls_padding"
+        android:paddingStart="@dimen/panel_side_padding"
+        android:paddingTop="@dimen/panel_top_padding"
+        android:paddingEnd="@dimen/panel_side_padding"
+        android:paddingBottom="@dimen/panel_bottom_padding"
         android:visibility="gone"
         tools:visibility="visible">
 
-        <!-- Row 1: what the slider adjusts. The zoom tab shows the zoom ("1.25×", left to right in
-             Hebrew too). The focus tab only on phones with manual focus, and not while frozen. -->
-        <com.google.android.material.button.MaterialButtonToggleGroup
-            android:id="@+id/adjustGroup"
+        <bukin.magnifier.PanelLayout
+            android:id="@+id/panel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:checkedButton="@id/tabZoom"
-            app:selectionRequired="true"
-            app:singleSelection="true">
+            android:layout_gravity="center_horizontal"
+            android:orientation="vertical">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/tabZoom"
-                style="@style/Widget.Magnifier.Tab"
-                android:accessibilityLiveRegion="polite"
-                android:textDirection="ltr"
-                android:textSize="22sp"
-                android:textStyle="bold"
-                tools:text="1.25×" />
+            <FrameLayout
+                android:id="@+id/ringArea"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/tabBrightness"
-                style="@style/Widget.Magnifier.Tab"
-                android:text="@string/tab_brightness" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/tabFocus"
-                style="@style/Widget.Magnifier.Tab"
-                android:text="@string/tab_focus"
-                android:visibility="gone"
-                tools:visibility="visible" />
-        </com.google.android.material.button.MaterialButtonToggleGroup>
-
-        <!-- Row 2: one slider at a time, with a button at each end. -->
-        <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp">
-
-            <LinearLayout
-                android:id="@+id/zoomRow"
-                style="@style/Widget.Magnifier.SliderRow">
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/zoomOut"
-                    style="@style/Widget.Magnifier.ZoomButton"
-                    android:contentDescription="@string/zoom_out_desc"
-                    app:icon="@drawable/ic_zoom_out" />
-
-                <com.google.android.material.slider.Slider
-                    android:id="@+id/zoomSlider"
-                    style="@style/Widget.Magnifier.BigSlider"
-                    android:contentDescription="@string/zoom_slider_desc" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/zoomIn"
-                    style="@style/Widget.Magnifier.ZoomButton"
-                    android:contentDescription="@string/zoom_in_desc"
-                    app:icon="@drawable/ic_zoom_in" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/brightnessRow"
-                style="@style/Widget.Magnifier.SliderRow"
-                android:visibility="gone">
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/brightnessDown"
-                    style="@style/Widget.Magnifier.ZoomButton"
-                    android:contentDescription="@string/brightness_down_desc"
-                    app:icon="@drawable/ic_brightness_down" />
-
-                <com.google.android.material.slider.Slider
-                    android:id="@+id/brightnessSlider"
-                    style="@style/Widget.Magnifier.BigSlider"
-                    android:contentDescription="@string/brightness_slider_desc"
-                    android:stepSize="1"
-                    android:value="0"
-                    android:valueFrom="-10"
-                    android:valueTo="10" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/brightnessUp"
-                    style="@style/Widget.Magnifier.ZoomButton"
-                    android:contentDescription="@string/brightness_up_desc"
-                    app:icon="@drawable/ic_brightness_up" />
-
-                <!-- Live, on a camera without exposure compensation: why there is no slider. -->
-                <TextView
-                    android:id="@+id/brightnessUnavailable"
-                    android:layout_width="match_parent"
+                <!-- Inside the ring: what it adjusts ("Zoom") and its value ("2.50×"). When the
+                     ring adjusts brightness or focus, a tap here takes it back to zoom. Under the
+                     ring, which only takes touches on its band. -->
+                <LinearLayout
+                    android:id="@+id/ringCentre"
+                    android:layout_width="@dimen/ring_centre_width"
                     android:layout_height="wrap_content"
-                    android:minHeight="@dimen/touch_target"
+                    android:layout_gravity="bottom|center_horizontal"
+                    android:layout_marginBottom="@dimen/ring_centre_bottom"
+                    android:accessibilityLiveRegion="polite"
                     android:gravity="center"
-                    android:text="@string/brightness_unavailable"
-                    android:textColor="@color/control_foreground"
-                    android:textSize="16sp"
-                    android:visibility="gone" />
-            </LinearLayout>
+                    android:minHeight="@dimen/touch_target"
+                    android:orientation="vertical"
+                    android:paddingTop="2dp"
+                    android:paddingBottom="2dp">
 
-            <!-- Manual focus, near to far: only on phones whose camera supports it. -->
+                    <TextView
+                        android:id="@+id/ringCaption"
+                        android:layout_width="match_parent"
+                        android:layout_height="@dimen/ring_caption_height"
+                        android:gravity="center"
+                        android:importantForAccessibility="no"
+                        android:maxLines="1"
+                        android:textColor="@color/control_foreground"
+                        android:textSize="15sp"
+                        app:autoSizeMaxTextSize="15sp"
+                        app:autoSizeMinTextSize="10sp"
+                        app:autoSizeTextType="uniform"
+                        tools:text="Zoom" />
+
+                    <TextView
+                        android:id="@+id/ringValue"
+                        android:layout_width="match_parent"
+                        android:layout_height="@dimen/ring_value_height"
+                        android:gravity="center"
+                        android:importantForAccessibility="no"
+                        android:maxLines="1"
+                        android:textColor="@color/accent"
+                        android:textDirection="ltr"
+                        android:textSize="34sp"
+                        android:textStyle="bold"
+                        app:autoSizeMaxTextSize="36sp"
+                        app:autoSizeMinTextSize="16sp"
+                        app:autoSizeTextType="uniform"
+                        tools:text="2.50×" />
+                </LinearLayout>
+
+                <bukin.magnifier.LensRingView
+                    android:id="@+id/lensRing"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+            </FrameLayout>
+
+            <!-- Live: brightness, light, FREEZE, focus, colours. Frozen: brightness, save, LIVE,
+                 share, colours (in the light's and the focus's places). Freeze rises into the ring. -->
             <LinearLayout
-                android:id="@+id/focusRow"
-                style="@style/Widget.Magnifier.SliderRow"
-                android:visibility="gone">
+                android:id="@+id/actionRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/freeze_rise"
+                android:baselineAligned="false"
+                android:gravity="bottom"
+                android:orientation="horizontal">
+
+                <!-- Puts brightness on the ring; shows the level ("+3"). -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/brightnessButton"
+                    style="@style/Widget.Magnifier.RoundButton"
+                    android:contentDescription="@string/ring_brightness"
+                    android:textDirection="ltr"
+                    app:icon="@drawable/ic_brightness_up"
+                    tools:text="0" />
+
+                <Space style="@style/Widget.Magnifier.RowGap" />
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/focusNear"
-                    style="@style/Widget.Magnifier.ZoomButton"
-                    android:contentDescription="@string/focus_near_desc"
-                    app:icon="@drawable/ic_focus_near" />
-
-                <com.google.android.material.slider.Slider
-                    android:id="@+id/focusSlider"
-                    style="@style/Widget.Magnifier.BigSlider"
-                    android:contentDescription="@string/focus_slider_desc" />
+                    android:id="@+id/lightButton"
+                    style="@style/Widget.Magnifier.RoundButton"
+                    android:contentDescription="@string/light_desc"
+                    android:text="@string/light_button"
+                    app:icon="@drawable/ic_light_off" />
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/focusFar"
-                    style="@style/Widget.Magnifier.ZoomButton"
-                    android:contentDescription="@string/focus_far_desc"
-                    app:icon="@drawable/ic_focus_far" />
+                    android:id="@+id/saveButton"
+                    style="@style/Widget.Magnifier.RoundButton"
+                    android:contentDescription="@string/save_desc"
+                    android:text="@string/save_button"
+                    android:visibility="gone"
+                    app:icon="@drawable/ic_save" />
+
+                <Space style="@style/Widget.Magnifier.RowGap" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/freezeButton"
+                    style="@style/Widget.Magnifier.FreezeButton"
+                    android:text="@string/freeze_button"
+                    app:icon="@drawable/ic_freeze" />
+
+                <Space style="@style/Widget.Magnifier.RowGap" />
+
+                <!-- The focus mode: Auto, Locked (after a tap on the picture) or Manual (the ring). -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/focusButton"
+                    style="@style/Widget.Magnifier.RoundButton"
+                    android:contentDescription="@string/focus_desc"
+                    android:text="@string/focus_auto"
+                    app:icon="@drawable/ic_focus_auto" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/shareButton"
+                    style="@style/Widget.Magnifier.RoundButton"
+                    android:contentDescription="@string/share_desc"
+                    android:text="@string/share_button"
+                    android:visibility="gone"
+                    app:icon="@drawable/ic_share" />
+
+                <Space style="@style/Widget.Magnifier.RowGap" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/colourButton"
+                    style="@style/Widget.Magnifier.RoundButton"
+                    android:contentDescription="@string/colour_desc"
+                    android:text="@string/colour_short_normal"
+                    app:icon="@drawable/ic_colour" />
             </LinearLayout>
-        </FrameLayout>
-
-        <!-- Row 3: the actions. Live: colours, light, FREEZE, focus. Frozen: colours, save, LIVE,
-             share (in the light's and the focus's places). -->
-        <LinearLayout
-            android:id="@+id/actionRow"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/colourButton"
-                style="@style/Widget.Magnifier.Tile"
-                android:contentDescription="@string/colour_desc"
-                android:text="@string/colour_short_normal"
-                app:icon="@drawable/ic_colour" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/lightButton"
-                style="@style/Widget.Magnifier.Tile"
-                android:layout_marginStart="8dp"
-                android:contentDescription="@string/light_desc"
-                android:text="@string/light_button"
-                app:icon="@drawable/ic_light_off" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/saveButton"
-                style="@style/Widget.Magnifier.Tile"
-                android:layout_marginStart="8dp"
-                android:contentDescription="@string/save_desc"
-                android:text="@string/save_button"
-                android:visibility="gone"
-                app:icon="@drawable/ic_save" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/freezeButton"
-                style="@style/Widget.Magnifier.FreezeButton"
-                android:layout_marginStart="8dp"
-                android:text="@string/freeze_button"
-                app:icon="@drawable/ic_freeze" />
-
-            <!-- The focus mode: Auto, Locked (after a tap on the picture) or Manual (the focus slider). -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/focusButton"
-                style="@style/Widget.Magnifier.Tile"
-                android:layout_marginStart="8dp"
-                android:contentDescription="@string/focus_desc"
-                android:text="@string/focus_auto"
-                app:icon="@drawable/ic_focus_auto" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/shareButton"
-                style="@style/Widget.Magnifier.Tile"
-                android:layout_marginStart="8dp"
-                android:contentDescription="@string/share_desc"
-                android:text="@string/share_button"
-                android:visibility="gone"
-                app:icon="@drawable/ic_share" />
-        </LinearLayout>
-    </LinearLayout>
+        </bukin.magnifier.PanelLayout>
+    </bukin.magnifier.ControlPanel>
 
     <!-- When the camera can't start: what happened, and "Try again" where that can help. -->
     <LinearLayout

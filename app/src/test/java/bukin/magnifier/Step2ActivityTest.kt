@@ -12,13 +12,13 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.view.KeyEvent
 import android.view.View
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.slider.Slider
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -86,6 +86,9 @@ class Step2ActivityTest {
         assertTrue(activity.view(R.id.lightButton).isVisible())
         assertFalse(activity.view(R.id.saveButton).isVisible())
         assertEquals("freeze the picture", activity.clickLabel(R.id.freezeButton))
+        val row = activity.findViewById<android.view.ViewGroup>(R.id.actionRow)
+        fun order() = (0 until row.childCount).map { row.getChildAt(it) }.filter { it.isVisible() && it is MaterialButton }.map { it.id }
+        assertEquals(listOf(R.id.brightnessButton, R.id.lightButton, R.id.freezeButton, R.id.focusButton, R.id.colourButton), order())
 
         activity.freezeForTest(paper())
         assertTrue(activity.frozen)
@@ -97,6 +100,8 @@ class Step2ActivityTest {
         assertEquals("Live", activity.text(R.id.freezeButton))
         assertEquals("Picture frozen", activity.state(R.id.freezeButton))
         assertEquals("go back to the moving picture", activity.clickLabel(R.id.freezeButton))
+        // Save and Share in the light's and the focus's places.
+        assertEquals(listOf(R.id.brightnessButton, R.id.saveButton, R.id.freezeButton, R.id.shareButton, R.id.colourButton), order())
         // TalkBack skips the live picture hidden underneath.
         assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS, activity.view(R.id.previewView).importantForAccessibility)
 
@@ -121,54 +126,93 @@ class Step2ActivityTest {
     }
 
     @Test
-    fun theFocusTabGoesWhileFrozenAndZoomIsChosen() {
+    fun theFocusRingGoesWhileFrozenAndZoomIsChosen() {
         val activity = launch().get()
         activity.manualFocus = ManualFocus(10f, calibrated = true)
         activity.onFocusEvent(FocusEvent.CAMERA_RESTARTED)
-        activity.view(R.id.tabFocus).performClick()
-        assertTrue(activity.view(R.id.focusRow).isVisible())
+        activity.setRingMode(RingMode.FOCUS)
+        assertEquals(RingMode.FOCUS, activity.ringMode)
         activity.freezeForTest(paper())
-        assertFalse(activity.view(R.id.tabFocus).isVisible())
-        assertTrue(activity.view(R.id.zoomRow).isVisible())
-        assertFalse(activity.view(R.id.focusRow).isVisible())
+        assertEquals(RingMode.ZOOM, activity.ringMode)
+        assertEquals("Zoom", activity.text(R.id.ringCaption))
+        // Brightness stays on the ring through a freeze, as the picture's brightness.
+        activity.setRingMode(RingMode.BRIGHTNESS)
+        activity.unfreezeForTest()
+        assertEquals(RingMode.BRIGHTNESS, activity.ringMode)
+        activity.freezeForTest(paper())
+        assertEquals(RingMode.BRIGHTNESS, activity.ringMode)
     }
 
     @Test
-    fun theButtonsAndVolumeKeysZoomTheFrozenPictureAndEveryStepShows() {
+    fun theRingAndVolumeKeysZoomTheFrozenPictureAndEveryStepShows() {
         val activity = launch().get()
         activity.freezeForTest(paper())
         val frozen = activity.findViewById<FrozenView>(R.id.frozenView)
-        val slider = activity.findViewById<Slider>(R.id.zoomSlider)
-        // The first frozen view: the slider at its left end, like the widest live view, and the
-        // label the zoom it was frozen at.
-        assertEquals("1.00×", activity.text(R.id.tabZoom))
-        assertEquals(0f, slider.value, 1e-3f)
-        assertFalse(activity.view(R.id.zoomOut).isEnabled)
-        activity.view(R.id.zoomIn).performClick()
+        val ring = activity.findViewById<LensRingView>(R.id.lensRing)
+        // The first frozen view: the ring at its start, like the widest live view, and the
+        // value the zoom it was frozen at.
+        assertEquals("1.00×", activity.text(R.id.ringValue))
+        assertEquals(0f, ring.value, 1e-3f)
+        assertTrue(ring.isEnabled)
+        // TalkBack's "forward" on the ring is one step, as a tap beside the thumb.
+        assertTrue(ring.performAccessibilityAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, null))
         assertEquals(1.110f, frozen.scale, 1e-3f)
-        assertEquals("1.11×", activity.text(R.id.tabZoom))
-        assertEquals("Zoom 1.11 times", activity.view(R.id.tabZoom).contentDescription)
-        assertEquals(5f, slider.value, 1e-2f)
-        // The volume keys, taken even at the top.
+        assertEquals("1.11×", activity.text(R.id.ringValue))
+        assertEquals("Zoom 1.11 times", activity.view(R.id.ringCentre).contentDescription)
+        assertEquals("1.11 times", ViewCompat.getStateDescription(ring))
+        assertEquals(5f, ring.value, 1e-2f)
+        // The volume keys, taken even at the top; they also bring the ring back to zoom.
+        activity.setRingMode(RingMode.BRIGHTNESS)
         val up = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP)
-        val labels = mutableListOf(activity.text(R.id.tabZoom))
+        val labels = mutableListOf("1.11×")
         repeat(20) {
             assertTrue(activity.onKeyDown(KeyEvent.KEYCODE_VOLUME_UP, up))
-            labels += activity.text(R.id.tabZoom)
+            labels += activity.text(R.id.ringValue)
         }
+        assertEquals(RingMode.ZOOM, activity.ringMode)
         assertEquals(8f, frozen.scale, 1e-3f)
         assertEquals("8.0×", labels.last())
-        assertEquals(100f, slider.value, 1e-2f)
+        assertEquals(100f, ring.value, 1e-2f)
         // Every press up to the top changed the number.
         val climb = labels.takeWhile { it != "8.0×" } + "8.0×"
         assertEquals(climb.distinct(), climb)
-        assertFalse(activity.view(R.id.zoomIn).isEnabled)
-        // The slider zooms it too, and the label follows: a third of the way is 2x.
-        slider.value = 100f / 3f
+        // Turning the ring zooms it too, and the value follows: a third of the way is 2x.
+        activity.onRingTurned(100f / 3f)
         assertEquals(2f, frozen.scale, 1e-3f)
-        assertEquals("2.0×", activity.text(R.id.tabZoom))
-        activity.view(R.id.zoomOut).performClick()
-        assertEquals("1.87×", activity.text(R.id.tabZoom))
+        assertEquals("2.0×", activity.text(R.id.ringValue))
+        activity.onRingStepped(-1)
+        assertEquals("1.87×", activity.text(R.id.ringValue))
+    }
+
+    @Test
+    fun turningTheRingWithAFingerZoomsTheFrozenPicture() {
+        val activity = launch().get()
+        activity.freezeForTest(paper())
+        val root = activity.view(R.id.root)
+        root.measure(View.MeasureSpec.makeMeasureSpec(root.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(root.height, View.MeasureSpec.EXACTLY))
+        root.layout(root.left, root.top, root.right, root.bottom)
+        val ring = activity.findViewById<LensRingView>(R.id.lensRing)
+        val g = ring.geometry!!
+        fun at(angle: Float): Pair<Float, Float> {
+            val rad = Math.toRadians(angle.toDouble())
+            return (g.cx + g.radius * kotlin.math.sin(rad)).toFloat() to (g.cy - g.radius * kotlin.math.cos(rad)).toFloat()
+        }
+        fun send(action: Int, p: Pair<Float, Float>) {
+            val now = android.os.SystemClock.uptimeMillis()
+            val e = android.view.MotionEvent.obtain(now, now, action, p.first, p.second, 0)
+            ring.dispatchTouchEvent(e)
+            e.recycle()
+        }
+        // From the thumb at the start, a third of the arc along: 2x.
+        send(android.view.MotionEvent.ACTION_DOWN, at(-75f))
+        for (i in 1..25) send(android.view.MotionEvent.ACTION_MOVE, at(-75f + 50f * i / 25))
+        send(android.view.MotionEvent.ACTION_UP, at(-25f))
+        assertEquals(2f, activity.findViewById<FrozenView>(R.id.frozenView).scale, 0.02f)
+        assertEquals("2.0×", activity.text(R.id.ringValue))
+        // A tap on the ring's right part: one step in, to the next twentieth (0.35 of the way).
+        send(android.view.MotionEvent.ACTION_DOWN, at(50f))
+        send(android.view.MotionEvent.ACTION_UP, at(50f))
+        assertEquals(2.07f, activity.findViewById<FrozenView>(R.id.frozenView).scale, 0.01f)
     }
 
     @Test
@@ -208,37 +252,45 @@ class Step2ActivityTest {
     }
 
     @Test
-    fun frozenBrightnessIsTheSameSliderThroughTheColourMatrix() {
+    fun frozenBrightnessIsTheSameRingThroughTheColourMatrix() {
         val activity = launch().get()
         activity.setColourMode(ColorMode.INVERTED, announce = false)
         activity.freezeForTest(paper())
-        activity.view(R.id.tabBrightness).performClick()
-        assertTrue(activity.view(R.id.brightnessRow).isVisible())
-        val slider = activity.findViewById<Slider>(R.id.brightnessSlider)
-        assertEquals(-10f, slider.valueFrom, 0f)
-        assertEquals(10f, slider.valueTo, 0f)
-        assertEquals(0f, slider.value, 0f)
-        activity.view(R.id.brightnessUp).performClick()
-        activity.view(R.id.brightnessUp).performClick()
+        activity.view(R.id.brightnessButton).performClick()
+        assertEquals(RingMode.BRIGHTNESS, activity.ringMode)
+        val ring = activity.findViewById<LensRingView>(R.id.lensRing)
+        assertEquals(-10f, ring.valueFrom, 0f)
+        assertEquals(10f, ring.valueTo, 0f)
+        assertEquals(1f, ring.stepSize, 0f)
+        assertEquals(0f, ring.value, 0f)
+        assertEquals(0f, ring.fillFrom, 0f)
+        activity.onRingStepped(1)
+        activity.onRingStepped(1)
         assertEquals(2, activity.frozenLevel)
+        assertEquals("+2", activity.text(R.id.ringValue))
+        assertEquals("+2", activity.text(R.id.brightnessButton))
+        assertEquals("2 steps lighter", ViewCompat.getStateDescription(ring))
         // Inverted: "lighter" is less light on the page, so the inverted screen gets lighter.
         assertArrayEquals(ColorMode.INVERTED.matrix(Brightness.gain(-2)), activity.pictureMatrix(), 1e-6f)
         val paperOnScreen = Color.red(ColorMode.apply(activity.pictureMatrix(), Color.rgb(200, 200, 200)))
         assertTrue("inverted paper at +2: $paperOnScreen", paperOnScreen > 55)
-        // In Normal the same slider position is more light.
+        // In Normal the same position is more light.
         activity.setColourMode(ColorMode.NORMAL, announce = false)
         assertArrayEquals(ColorMode.NORMAL.matrix(Brightness.gain(2)), activity.pictureMatrix(), 1e-6f)
         activity.setColourMode(ColorMode.INVERTED, announce = false)
         assertNotNull(activity.findViewById<FrozenView>(R.id.frozenView).pictureFilter)
         // Back to normal colours and level 0: no filter at all.
         activity.setColourMode(ColorMode.NORMAL, announce = false)
-        slider.value = 0f
+        activity.onRingTurned(0f)
         assertNull(activity.findViewById<FrozenView>(R.id.frozenView).pictureFilter)
+        // Turned darker.
+        activity.onRingTurned(-3f)
+        assertEquals("\u22123", activity.text(R.id.ringValue))
         // Each freeze starts at "as taken".
-        activity.view(R.id.brightnessDown).performClick()
         activity.unfreezeForTest()
         activity.freezeForTest(paper())
         assertEquals(0, activity.frozenLevel)
+        assertEquals("0", activity.text(R.id.brightnessButton))
     }
 
     @Test
@@ -259,8 +311,8 @@ class Step2ActivityTest {
     @Test
     fun aZoomChangeIsSavedSoonEvenIfTheAppIsKilledBeforeStopping() {
         val activity = launch().get()
-        // No camera in Robolectric, so the volume keys aren't taken; the slider is the user's.
-        activity.findViewById<Slider>(R.id.zoomSlider).value = 35f
+        // No camera in Robolectric, so the volume keys aren't taken; the ring is the user's.
+        activity.onRingTurned(35f)
         assertEquals(0.35f, activity.wantedLinearZoom, 1e-4f)
         assertEquals(0f, MagnifierSettings(app).zoomLinear, 0f)
         shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(600))
@@ -377,7 +429,7 @@ class Step2ActivityTest {
         root.measure(View.MeasureSpec.makeMeasureSpec(root.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(root.height, View.MeasureSpec.EXACTLY))
         root.layout(root.left, root.top, root.right, root.bottom)
         val density = activity.resources.displayMetrics.density
-        for (id in listOf(R.id.saveButton, R.id.shareButton, R.id.freezeButton, R.id.colourButton)) {
+        for (id in listOf(R.id.brightnessButton, R.id.saveButton, R.id.shareButton, R.id.freezeButton, R.id.colourButton)) {
             val button = activity.findViewById<MaterialButton>(id)
             assertTrue(button.height / density >= 56f && button.width / density >= 56f)
         }

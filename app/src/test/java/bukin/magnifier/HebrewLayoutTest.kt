@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
 import android.widget.TextView
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
@@ -51,42 +52,52 @@ class HebrewLayoutTest {
     }
 
     @Test
-    fun theControlsAreMirrored() {
+    fun theControlsAndTheRingAreMirrored() {
         shadowOf(app).grantPermissions(Manifest.permission.CAMERA)
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
-        // Show the focus tab too, as on a phone with manual focus.
+        // As on a phone with manual focus.
         activity.manualFocus = ManualFocus(minimumFocusDiopters = 10f, calibrated = true)
         activity.onFocusEvent(FocusEvent.CAMERA_RESTARTED)
         relayout(activity)
 
         fun v(id: Int) = activity.findViewById<View>(id)
-        // Start is on the right: the zoom tab, "zoom out" and the colours there; "zoom in" and the
-        // focus button on the left.
-        assertTrue(v(R.id.tabFocus).left < v(R.id.tabBrightness).left && v(R.id.tabBrightness).left < v(R.id.tabZoom).left)
-        assertTrue(v(R.id.zoomIn).left < v(R.id.zoomOut).left)
-        assertTrue(v(R.id.focusButton).left < v(R.id.freezeButton).left)
-        assertTrue(v(R.id.freezeButton).left < v(R.id.lightButton).left && v(R.id.lightButton).left < v(R.id.colourButton).left)
+        // Start is on the right: brightness and the light there, the focus and the colours on the left.
+        assertTrue(v(R.id.colourButton).left < v(R.id.focusButton).left && v(R.id.focusButton).left < v(R.id.freezeButton).left)
+        assertTrue(v(R.id.freezeButton).left < v(R.id.lightButton).left && v(R.id.lightButton).left < v(R.id.brightnessButton).left)
+        // The ring runs from right to left, like the sliders did: zoom out, darker and near on the right.
+        val ring = activity.findViewById<LensRingView>(R.id.lensRing)
+        val g = ring.geometry!!
+        assertTrue(g.rtl)
+        assertTrue(g.xFor(0f) > g.xFor(1f))
         assertEquals("פנס", activity.findViewById<TextView>(R.id.lightButton).text.toString())
         assertEquals("אוטומטי", activity.findViewById<TextView>(R.id.focusButton).text.toString())
         assertEquals("הקפאה", activity.findViewById<TextView>(R.id.freezeButton).text.toString())
         assertEquals("רגיל", activity.findViewById<TextView>(R.id.colourButton).text.toString())
-        assertEquals("בהירות", activity.findViewById<TextView>(R.id.tabBrightness).text.toString())
         assertEquals("מיקוד", v(R.id.focusButton).contentDescription)
         assertEquals("צבעים", v(R.id.colourButton).contentDescription)
-        assertEquals("הגדלה", v(R.id.zoomSlider).contentDescription)
+        assertEquals("בהירות", v(R.id.brightnessButton).contentDescription)
+        assertEquals("הגדלה", v(R.id.lensRing).contentDescription)
+        assertEquals("הגדלה", activity.findViewById<TextView>(R.id.ringCaption).text.toString())
         screenshot(activity.window.decorView, "he-live.png")
 
-        // The focus tab's row: "near" on the right.
-        v(R.id.tabFocus).performClick()
+        // The focus ring: the distance in Hebrew, right to left.
+        v(R.id.focusButton).performClick()
+        activity.onRingTurned(50f)
         relayout(activity)
-        assertTrue(v(R.id.focusFar).left < v(R.id.focusNear).left)
+        assertEquals("מיקוד", activity.findViewById<TextView>(R.id.ringCaption).text.toString())
+        assertEquals("20 ס״מ", activity.findViewById<TextView>(R.id.ringValue).text.toString())
+        assertEquals(View.TEXT_DIRECTION_LOCALE, v(R.id.ringValue).textDirection)
+        assertEquals("מרחק המיקוד", v(R.id.lensRing).contentDescription)
+        assertEquals("הצגת ההגדלה בטבעת", clickLabel(v(R.id.ringCentre)))
         screenshot(activity.window.decorView, "he-focus.png")
 
-        // The brightness row: "darker" on the right.
-        v(R.id.tabBrightness).performClick()
+        // The brightness ring: the level reads left to right ("+2", not "2+").
+        v(R.id.brightnessButton).performClick()
+        assertEquals(RingMode.BRIGHTNESS, activity.ringMode)
+        assertEquals("בהירות", activity.findViewById<TextView>(R.id.ringCaption).text.toString())
+        assertEquals(View.TEXT_DIRECTION_LTR, v(R.id.ringValue).textDirection)
+        assertEquals(View.TEXT_DIRECTION_LTR, v(R.id.brightnessButton).textDirection)
         relayout(activity)
-        assertTrue(v(R.id.brightnessUp).left < v(R.id.brightnessDown).left)
-        assertEquals("כהה יותר", v(R.id.brightnessDown).contentDescription)
         screenshot(activity.window.decorView, "he-brightness.png")
     }
 
@@ -105,8 +116,19 @@ class HebrewLayoutTest {
         assertEquals("שיתוף התמונה כולה", v(R.id.shareButton).contentDescription)
         assertEquals("צהוב", activity.findViewById<TextView>(R.id.colourButton).text.toString())
         // The zoom number reads left to right.
-        assertEquals("1.00×", activity.findViewById<TextView>(R.id.tabZoom).text.toString())
+        assertEquals("1.00×", activity.findViewById<TextView>(R.id.ringValue).text.toString())
+        assertEquals(View.TEXT_DIRECTION_LTR, v(R.id.ringValue).textDirection)
+        assertEquals("הגדלה פי 1.00", v(R.id.ringCentre).contentDescription)
+        // The frozen ring is mirrored too: its start (the picture as frozen) on the right.
+        val ring = activity.findViewById<LensRingView>(R.id.lensRing)
+        assertEquals(0f, ring.fraction, 0f)
+        assertTrue(ring.geometry!!.xFor(ring.fraction) > ring.geometry!!.cx)
         screenshot(activity.window.decorView, "he-frozen.png")
+    }
+
+    private fun clickLabel(view: View): String? {
+        val info = AccessibilityNodeInfoCompat.wrap(view.createAccessibilityNodeInfo())
+        return info.actionList.firstOrNull { it.id == AccessibilityNodeInfoCompat.ACTION_CLICK }?.label?.toString()
     }
 
     private fun relayout(activity: MainActivity) {

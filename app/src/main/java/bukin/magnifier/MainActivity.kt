@@ -40,6 +40,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.DrawableRes
 import androidx.annotation.OptIn
 import androidx.annotation.VisibleForTesting
 import androidx.appcompat.app.AppCompatActivity
@@ -80,7 +81,6 @@ import androidx.core.view.updatePadding
 import androidx.exifinterface.media.ExifInterface
 import bukin.magnifier.databinding.ActivityMainBinding
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.slider.Slider
 import com.google.common.util.concurrent.ListenableFuture
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -91,9 +91,9 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * The magnifier: the rear camera full screen, with zoom (slider, pinch, volume keys, buttons),
- * focus (auto, tap to lock, and a near-to-far slider where the camera supports it), the LED
- * light, colour modes and brightness. Freeze holds a sharp photo to zoom and move around, save
+ * The magnifier: the rear camera full screen, with zoom (the lens ring, pinch, volume keys),
+ * focus (auto, tap to lock, and a near-to-far focus ring where the camera supports it), the LED
+ * light, colour modes and brightness. The lens ring adjusts one of zoom, brightness and focus. Freeze holds a sharp photo to zoom and move around, save
  * or share. Before the camera permission is granted, a permission screen covers it; when the
  * camera can't start, an error panel does.
  */
@@ -120,9 +120,12 @@ class MainActivity : AppCompatActivity() {
     private var cameraStarting = false
     private var hasFlashUnit: Boolean? = null
     private var torchState: Int? = null
-    private var draggingSlider = false
-    private var updatingSlider = false
     private var pendingTap: PointF? = null
+
+    /** What the lens ring adjusts: zoom, unless the user chose brightness or focus. Not remembered. */
+    @VisibleForTesting
+    internal var ringMode = RingMode.ZOOM
+        private set
 
     /** The zoom the user last chose (CameraX linear zoom): remembered, and set again when the camera opens. */
     @VisibleForTesting
@@ -133,7 +136,7 @@ class MainActivity : AppCompatActivity() {
     internal var focusMode = FocusMode.AUTO
         private set
 
-    /** The focus slider's range, or null when the camera has no manual focus (the slider is hidden). */
+    /** The focus ring's range, or null when the camera has no manual focus (no focus ring). */
     @VisibleForTesting
     @Volatile
     internal var manualFocus: ManualFocus? = null
@@ -159,8 +162,14 @@ class MainActivity : AppCompatActivity() {
 
     /** Counts focus changes, so a slow camera reply to an older one is ignored. */
     private var focusGeneration = 0
-    private var updatingFocusSlider = false
-    private var draggingFocusSlider = false
+
+    /**
+     * The focus ring's place, near (0) to far ([ManualFocus.SLIDER_MAX]): the lens distance in
+     * Manual. Outside Manual it follows the lens, so taking over doesn't make the focus jump.
+     */
+    @VisibleForTesting
+    internal var focusValue = ManualFocus.SLIDER_MAX
+        private set
 
     /** The lens's focus distance in the latest frame (diopters), written on a camera thread. */
     @Volatile
@@ -176,13 +185,21 @@ class MainActivity : AppCompatActivity() {
     internal var colourMode = ColorMode.NORMAL
         private set
 
-    /** The live brightness slider (camera exposure), or null when the camera has none. */
+    /** The camera's exposure range for live brightness, or null when the camera has none. */
     @VisibleForTesting
     internal var exposure: Brightness.Exposure? = null
-    private var updatingBrightness = false
 
     /**
-     * The frozen picture's brightness slider, -10..10, + lighter on screen in every mode (the gain
+     * The live brightness on the camera's exposure grid, in the screen's sense: + is a lighter
+     * screen in every colour mode (see [Brightness.Exposure.cameraIndex]). Read from the camera
+     * when it opens and when the picture goes back to live.
+     */
+    @VisibleForTesting
+    internal var brightnessValue = 0f
+        private set
+
+    /**
+     * The frozen picture's brightness, -10..10, + lighter on screen in every mode (the gain
      * is [Brightness.gain] of [ColorMode.lightFor] it); 0 at every freeze.
      */
     @VisibleForTesting
@@ -247,12 +264,12 @@ class MainActivity : AppCompatActivity() {
         applyWindowInsets()
         setUpControls()
         setUpPreviewGestures()
-        binding.frozenView.onScaleChanged = { renderZoom() }
+        binding.frozenView.onScaleChanged = { renderRing() }
+        // A pinch or double tap on the frozen picture shows the zoom on the ring.
+        binding.frozenView.onUserZoom = { if (ringMode != RingMode.ZOOM) setRingMode(RingMode.ZOOM) }
         onBackPressedDispatcher.addCallback(this, backToLive)
         applyPreviewFilter()
-        renderZoom()
         renderTorch()
-        renderFocus()
         renderColour()
         renderFreeze()
         // Pictures shared on earlier visits: the apps they went to have had them for a while now.
@@ -396,16 +413,15 @@ class MainActivity : AppCompatActivity() {
         manualFocus = readManualFocus(bound.cameraInfo)
         focusGuard = manualFocus?.let { ManualFocusGuard(it.minimumFocusDiopters) }
         debugLog("manual focus: $manualFocus; photos: ${imageCapture?.resolutionInfo?.resolution}")
-        bound.cameraInfo.zoomState.observe(this) { renderZoom() }
+        bound.cameraInfo.zoomState.observe(this) { renderRing() }
         bound.cameraInfo.torchState.observe(this) { state ->
             torchState = state
             renderTorch()
         }
         bound.cameraInfo.cameraState.observe(this) { onCameraState(it) }
         readExposure()
-        renderZoom()
+        syncBrightnessFromCamera()
         renderTorch()
-        renderFocus()
         renderFreeze()
     }
 
@@ -471,7 +487,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 restoreSettings(cam)
                 readExposure()
-                renderBrightness()
+                syncBrightnessFromCamera()
                 renderFreeze()
             }
         }
@@ -507,9 +523,7 @@ class MainActivity : AppCompatActivity() {
         exposure = null
         binding.root.removeCallbacks(focusGuardTimeout)
         showProblem(null)
-        renderZoom()
         renderTorch()
-        renderFocus()
         renderFreeze()
         val provider = cameraProvider
         if (provider != null) bindCamera(provider) else startCamera()
@@ -557,44 +571,85 @@ class MainActivity : AppCompatActivity() {
         permissionButton.setOnClickListener { onPermissionButton() }
         errorRetry.setOnClickListener { retryCamera() }
         lightButton.setOnClickListener { onLightButton() }
-        zoomIn.setOnClickListener { zoomBySteps(1) }
-        zoomOut.setOnClickListener { zoomBySteps(-1) }
-        focusButton.setOnClickListener { onFocusEvent(FocusEvent.FOCUS_BUTTON) }
+        brightnessButton.setOnClickListener { onBrightnessButton() }
+        focusButton.setOnClickListener { onFocusButton() }
         freezeButton.setOnClickListener { if (frozen) unfreeze() else freeze() }
         colourButton.setOnClickListener { setColourMode(colourMode.next(), announce = true) }
         saveButton.setOnClickListener { onSaveButton() }
         shareButton.setOnClickListener { startExport(ExportKind.SHARE) }
-        adjustGroup.addOnButtonCheckedListener { _, _, isChecked -> if (isChecked) renderAdjustRows() }
-        setUpFocusSlider()
-        setUpBrightness()
+        // Inside the ring: back to zoom. Clickable only while the ring adjusts something else.
+        ringCentre.setOnClickListener { setRingMode(RingMode.ZOOM) }
+        lensRing.listener = object : LensRingView.Listener {
+            override fun onRingTouchStart() {
+                // Touching the focus ring takes over, even where its value doesn't change.
+                if (ringMode == RingMode.FOCUS) onFocusEvent(FocusEvent.FOCUS_SLIDER)
+            }
 
-        zoomSlider.valueFrom = 0f
-        zoomSlider.valueTo = ZoomMath.SLIDER_MAX
-        zoomSlider.addOnChangeListener { _, value, _ ->
-            // Any change the app didn't make itself is the user's: touch, keyboard or TalkBack.
-            if (updatingSlider) return@addOnChangeListener
-            if (frozen) {
-                frozenView.zoomTo(FrozenZoom.sliderToScale(value))
+            override fun onRingValue(value: Float) = onRingTurned(value)
+
+            override fun onRingTouchEnd() = renderRing()
+
+            override fun onRingStep(steps: Int) = onRingStepped(steps)
+        }
+    }
+
+    /** The ring was turned to [value]: zoom, brightness or focus, with the old sliders' mappings. */
+    @VisibleForTesting
+    internal fun onRingTurned(value: Float) {
+        when (ringMode) {
+            RingMode.ZOOM -> if (frozen) {
+                binding.frozenView.zoomTo(FrozenZoom.sliderToScale(value))
             } else {
                 val linear = ZoomMath.sliderToLinear(value)
                 camera?.cameraControl?.setLinearZoom(linear)
                 rememberZoom(linear)
             }
+            RingMode.BRIGHTNESS -> setBrightness(value)
+            RingMode.FOCUS -> {
+                focusValue = value.coerceIn(0f, ManualFocus.SLIDER_MAX)
+                onFocusEvent(FocusEvent.FOCUS_SLIDER)
+            }
         }
-        zoomSlider.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
-            override fun onStartTrackingTouch(slider: Slider) {
-                draggingSlider = true
-            }
+        renderRing()
+    }
 
-            override fun onStopTrackingTouch(slider: Slider) {
-                draggingSlider = false
-                renderZoom()
-            }
-        })
-        // What TalkBack says for the slider's value: the zoom, not a percentage.
-        zoomSlider.setLabelFormatter { value ->
-            val ratio = zoomForSlider(value) ?: return@setLabelFormatter ""
-            getString(R.string.zoom_spoken, formatZoom(ratio))
+    /**
+     * One step of the ring (a tap beside the thumb or on an end icon, an arrow key, TalkBack):
+     * the old − / + buttons' steps.
+     */
+    @VisibleForTesting
+    internal fun onRingStepped(steps: Int) {
+        when (ringMode) {
+            RingMode.ZOOM -> zoomBySteps(steps)
+            RingMode.BRIGHTNESS -> stepBrightness(steps)
+            RingMode.FOCUS -> stepFocus(steps)
+        }
+    }
+
+    /** Puts [wanted] on the ring, if it can be there now (see [RingModes.allowed]). */
+    @VisibleForTesting
+    internal fun setRingMode(wanted: RingMode) {
+        ringMode = wanted
+        renderRing()
+    }
+
+    /** Live, brightness needs the camera's exposure control (assumed until the camera says). */
+    private fun brightnessAvailable(): Boolean = frozen || exposure != null || camera == null
+
+    private fun onBrightnessButton() {
+        if (!brightnessAvailable()) {
+            // A camera without exposure control: say why, and how to brighten anyway.
+            showMessage(getString(R.string.brightness_unavailable), forTalkBack = true)
+            return
+        }
+        setRingMode(RingModes.brightnessButton(ringMode))
+    }
+
+    private fun onFocusButton() {
+        when (RingModes.focusButton(focusMode, ringMode, manualFocus != null)) {
+            FocusButtonAction.LOCK_MIDDLE, FocusButtonAction.BACK_TO_AUTO -> onFocusEvent(FocusEvent.FOCUS_BUTTON)
+            FocusButtonAction.RING_TO_FOCUS -> setRingMode(RingMode.FOCUS)
+            FocusButtonAction.RING_TO_ZOOM -> setRingMode(RingMode.ZOOM)
         }
     }
 
@@ -613,34 +668,10 @@ class MainActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
-    private fun setUpFocusSlider() = with(binding) {
-        focusSlider.valueFrom = 0f
-        focusSlider.valueTo = ManualFocus.SLIDER_MAX
-        focusSlider.value = ManualFocus.SLIDER_MAX
-        focusSlider.addOnChangeListener { _, _, _ ->
-            // As with zoom: any change the app didn't make itself is the user's.
-            if (!updatingFocusSlider) onFocusEvent(FocusEvent.FOCUS_SLIDER)
-        }
-        focusSlider.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
-            override fun onStartTrackingTouch(slider: Slider) {
-                draggingFocusSlider = true
-                // Touching the slider takes over, even where its value doesn't change.
-                onFocusEvent(FocusEvent.FOCUS_SLIDER)
-            }
-
-            override fun onStopTrackingTouch(slider: Slider) {
-                draggingFocusSlider = false
-            }
-        })
-        focusNear.setOnClickListener { stepFocus(-1) }
-        focusFar.setOnClickListener { stepFocus(1) }
-        focusSlider.setLabelFormatter { value -> spokenFocus(value) }
-    }
-
-    /** The near / far buttons. Also at an end of the slider, they take over the focus. */
-    private fun stepFocus(steps: Int) = with(binding.focusSlider) {
-        val target = ManualFocus.step(value, steps)
-        if (target != value) value = target else onFocusEvent(FocusEvent.FOCUS_SLIDER)
+    /** One step of the focus ring towards far (+) or near (−). At an end it still takes over the focus. */
+    private fun stepFocus(steps: Int) {
+        focusValue = ManualFocus.step(focusValue, steps)
+        onFocusEvent(FocusEvent.FOCUS_SLIDER)
     }
 
     private fun spokenFocus(value: Float): String {
@@ -655,7 +686,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** The −/+ buttons and the volume keys: the camera's zoom live, the picture's when frozen. */
+    /** The focus distance as the ring's centre shows it: "20 cm", "1.5 m", "Far". */
+    private fun shortFocus(value: Float): String {
+        val range = manualFocus ?: return ""
+        return when (val distance = range.describe(value)) {
+            ManualFocus.Distance.Far -> getString(R.string.focus_spoken_far)
+            is ManualFocus.Distance.Centimetres -> getString(R.string.focus_short_cm, distance.cm)
+            is ManualFocus.Distance.Metres ->
+                getString(R.string.focus_short_m, ZoomMath.formatOneDecimal(distance.m, resources.configuration.locales[0]))
+            is ManualFocus.Distance.Percent -> getString(R.string.focus_short_percent, distance.percent)
+        }
+    }
+
+    /** Ring taps and the volume keys: the camera's zoom live, the picture's when frozen. */
     @VisibleForTesting
     internal fun zoomBySteps(steps: Int) {
         if (frozen) {
@@ -671,7 +714,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * The zoom the user chose, saved half a second after the last change (a slider drag makes
+     * The zoom the user chose, saved half a second after the last change (turning the ring makes
      * many), so it survives the app being killed without a chance to save on the way out.
      */
     private fun rememberZoom(linear: Float) {
@@ -684,7 +727,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun formatZoom(ratio: Float): String = ZoomMath.formatRatio(ratio, resources.configuration.locales[0])
 
-    /** The zoom a slider position stands for, live or frozen; null without a camera. */
+    /** The zoom a ring position stands for, live or frozen; null without a camera. */
     private fun zoomForSlider(value: Float): Float? {
         if (frozen) {
             val view = binding.frozenView
@@ -694,45 +737,179 @@ class MainActivity : AppCompatActivity() {
         return ZoomMath.linearToRatio(ZoomMath.sliderToLinear(value), zoom.minZoomRatio, zoom.maxZoomRatio)
     }
 
-    private fun renderZoom() = with(binding) {
-        if (frozen) {
-            val view = frozenView
-            zoomSlider.isEnabled = true
-            zoomIn.isEnabled = view.scale < view.maxScale * 0.999f
-            zoomOut.isEnabled = view.scale > view.minScale * 1.001f
-            if (!draggingSlider) setSlider(zoomSlider, FrozenZoom.scaleToSlider(view.scale))
-            showZoomValue(formatZoom(cameraZoomAtFreeze * view.scale))
-            return@with
-        }
-        val zoom = currentZoom()
-        val canZoom = zoom != null && ZoomMath.canZoom(zoom.minZoomRatio, zoom.maxZoomRatio)
-        zoomSlider.isEnabled = canZoom
-        zoomIn.isEnabled = canZoom && zoom.linearZoom < 1f
-        zoomOut.isEnabled = canZoom && zoom.linearZoom > 0f
-        if (zoom == null) {
-            tabZoom.setText(R.string.zoom_slider_desc)
-            tabZoom.contentDescription = null
-            return@with
-        }
-        if (!draggingSlider) setSlider(zoomSlider, ZoomMath.linearToSlider(zoom.linearZoom))
-        if (canZoom) {
-            showZoomValue(formatZoom(zoom.zoomRatio))
+    // ---- The ring and its centre ---------------------------------------------------------------
+
+    /** What the ring shows: its range, step grid, where the yellow starts, the value, the end icons. */
+    private class RingSpec(
+        val from: Float,
+        val to: Float,
+        val step: Float,
+        val value: Float,
+        @param:DrawableRes val start: Int,
+        @param:DrawableRes val end: Int,
+        val enabled: Boolean,
+        /** Where the yellow part starts: the start, or 0 for brightness. */
+        val fill: Float = from,
+    )
+
+    private fun ringSpec(): RingSpec = when (ringMode) {
+        RingMode.ZOOM -> if (frozen) {
+            val scale = binding.frozenView.scale
+            RingSpec(0f, FrozenZoom.SLIDER_MAX, 0f, FrozenZoom.scaleToSlider(scale), R.drawable.ic_zoom_out, R.drawable.ic_zoom_in, true)
         } else {
-            tabZoom.setText(R.string.zoom_unavailable)
-            tabZoom.contentDescription = null
+            val zoom = currentZoom()
+            val canZoom = zoom != null && ZoomMath.canZoom(zoom.minZoomRatio, zoom.maxZoomRatio)
+            val linear = zoom?.linearZoom ?: wantedLinearZoom
+            RingSpec(0f, ZoomMath.SLIDER_MAX, 0f, ZoomMath.linearToSlider(linear), R.drawable.ic_zoom_out, R.drawable.ic_zoom_in, canZoom)
         }
+        RingMode.BRIGHTNESS -> {
+            val range = exposure
+            val levels = Brightness.FROZEN_LEVELS.toFloat()
+            val (down, up) = R.drawable.ic_brightness_down to R.drawable.ic_brightness_up
+            when {
+                frozen -> RingSpec(-levels, levels, 1f, frozenLevel.toFloat(), down, up, true, fill = 0f)
+                range != null -> RingSpec(
+                    range.from.toFloat(), range.to.toFloat(), range.step.toFloat(), brightnessValue, down, up, camera != null, fill = 0f,
+                )
+                else -> RingSpec(-levels, levels, 1f, 0f, down, up, false, fill = 0f)
+            }
+        }
+        RingMode.FOCUS -> RingSpec(0f, ManualFocus.SLIDER_MAX, 0f, focusValue, R.drawable.ic_focus_near, R.drawable.ic_focus_far, camera != null)
     }
 
-    /** The zoom tab shows the zoom ("1.25×"); TalkBack says "Zoom 1.25 times". */
-    private fun showZoomValue(ratio: String) = with(binding.tabZoom) {
-        text = getString(R.string.zoom_label, ratio)
-        contentDescription = getString(R.string.zoom_spoken, ratio)
+    /**
+     * The ring for what it adjusts now, its centre (what, and how much), and the two buttons that
+     * choose it. Also when the zoom, the focus or the brightness changed some other way.
+     */
+    private fun renderRing() = with(binding) {
+        ringMode = RingModes.allowed(ringMode, manualFocus != null, frozen, brightnessAvailable())
+        val spec = ringSpec()
+        // While a finger turns it, the ring keeps its own value (the camera reports zoom a little later).
+        if (!lensRing.isDragging) lensRing.configure(spec.from, spec.to, spec.step, spec.fill, spec.value, spec.start, spec.end)
+        lensRing.isEnabled = spec.enabled
+        lensRing.contentDescription = getString(
+            when (ringMode) {
+                RingMode.ZOOM -> R.string.ring_zoom
+                RingMode.BRIGHTNESS -> R.string.ring_brightness
+                RingMode.FOCUS -> R.string.ring_focus_desc
+            },
+        )
+        ViewCompat.setStateDescription(lensRing, ringState(lensRing.value))
+        renderRingCentre()
+        renderBrightnessButton()
+        renderFocusButton()
     }
 
-    private fun setSlider(slider: Slider, value: Float) {
-        updatingSlider = true
-        slider.value = value.coerceIn(slider.valueFrom, slider.valueTo)
-        updatingSlider = false
+    /** What TalkBack says for the ring's value: "2.50 times", "3 steps lighter", "20 centimetres". */
+    private fun ringState(value: Float): String? = when (ringMode) {
+        RingMode.ZOOM -> zoomForSlider(value)?.let { getString(R.string.zoom_state, formatZoom(it)) }
+        RingMode.BRIGHTNESS -> spokenBrightness(brightnessLevelAt(value))
+        RingMode.FOCUS -> if (focusMode == FocusMode.MANUAL) spokenFocus(value) else getString(focusMode.text)
+    }
+
+    /**
+     * Inside the ring: what it adjusts and the value, big ("2.50×", "+3", "20 cm", "Auto"). Away
+     * from zoom it is a button back to zoom; on zoom, TalkBack hears every change ("Zoom 2.50 times").
+     */
+    private fun renderRingCentre() = with(binding) {
+        val caption = getString(
+            when (ringMode) {
+                RingMode.ZOOM -> R.string.ring_zoom
+                RingMode.BRIGHTNESS -> R.string.ring_brightness
+                RingMode.FOCUS -> R.string.ring_focus
+            },
+        )
+        val (shown, spoken) = when (ringMode) {
+            RingMode.ZOOM -> zoomTexts()
+            RingMode.BRIGHTNESS -> brightnessLevel().let { RingModes.levelText(it) to spokenBrightness(it) }
+            RingMode.FOCUS -> when (focusMode) {
+                FocusMode.MANUAL -> shortFocus(focusValue) to spokenFocus(focusValue)
+                else -> getString(focusMode.text).let { it to it }
+            }
+        }
+        ringCaption.setIfChanged(caption)
+        ringValue.setIfChanged(shown)
+        // Numbers read left to right in Hebrew too; a distance or "Auto" in the language's direction.
+        ringValue.textDirection = if (ringMode == RingMode.FOCUS) View.TEXT_DIRECTION_LOCALE else View.TEXT_DIRECTION_LTR
+        val toZoom = ringMode != RingMode.ZOOM
+        ringCentre.isClickable = toZoom
+        ringCentre.isFocusable = toZoom
+        ringCentre.background = if (toZoom) ContextCompat.getDrawable(this@MainActivity, R.drawable.ring_centre_background) else null
+        ringCentre.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        ringCentre.contentDescription = when {
+            spoken == null -> caption
+            toZoom -> getString(R.string.ring_centre_spoken, caption, spoken)
+            else -> spoken
+        }
+        ringCentre.accessibilityLiveRegion = if (toZoom) View.ACCESSIBILITY_LIVE_REGION_NONE else View.ACCESSIBILITY_LIVE_REGION_POLITE
+        setClickLabel(ringCentre, if (toZoom) getString(R.string.ring_back_to_zoom) else null)
+    }
+
+    /** The zoom as the centre shows it ("2.50×") and as TalkBack says it ("Zoom 2.50 times"). */
+    private fun zoomTexts(): Pair<String, String?> {
+        val ratio = if (frozen) {
+            cameraZoomAtFreeze * binding.frozenView.scale
+        } else {
+            val zoom = currentZoom() ?: return "" to null
+            if (!ZoomMath.canZoom(zoom.minZoomRatio, zoom.maxZoomRatio)) {
+                return getString(R.string.zoom_unavailable).let { it to it }
+            }
+            zoom.zoomRatio
+        }
+        val text = formatZoom(ratio)
+        return getString(R.string.zoom_label, text) to getString(R.string.zoom_spoken, text)
+    }
+
+    /** The brightness button: the level ("+3"), yellow when on the ring or not at 0. */
+    private fun renderBrightnessButton() = with(binding.brightnessButton) {
+        val available = brightnessAvailable()
+        val level = brightnessLevel()
+        setIfChanged(RingModes.levelText(level))
+        ViewCompat.setStateDescription(this, if (available) spokenBrightness(level) else getString(R.string.state_unavailable))
+        setClickLabel(this, getString(if (ringMode == RingMode.BRIGHTNESS) R.string.ring_back_to_zoom else R.string.brightness_action_ring))
+        paintStateButton(this, highlighted = ringMode == RingMode.BRIGHTNESS || level != 0)
+        // Still tappable when unavailable: it says why.
+        alpha = if (available && (camera != null || frozen)) 1f else DISABLED_ALPHA
+    }
+
+    /** The focus button: the mode, yellow when not Auto or when the focus is on the ring. */
+    private fun renderFocusButton() = with(binding.focusButton) {
+        val mode = focusMode
+        val ready = camera != null
+        isEnabled = ready
+        setIfChanged(getString(mode.text))
+        setIconIfChanged(this, mode.icon)
+        ViewCompat.setStateDescription(this, getString(mode.text))
+        val action = when (RingModes.focusButton(mode, ringMode, manualFocus != null)) {
+            FocusButtonAction.LOCK_MIDDLE -> R.string.focus_action_lock
+            FocusButtonAction.BACK_TO_AUTO -> R.string.focus_action_auto
+            FocusButtonAction.RING_TO_FOCUS -> R.string.focus_action_ring
+            FocusButtonAction.RING_TO_ZOOM -> R.string.ring_back_to_zoom
+        }
+        setClickLabel(this, getString(action))
+        paintStateButton(this, mode.highlighted || ringMode == RingMode.FOCUS)
+        alpha = if (ready) 1f else DISABLED_ALPHA
+    }
+
+    private fun android.widget.TextView.setIfChanged(value: CharSequence) {
+        if (text?.toString() != value.toString()) text = value
+    }
+
+    /** Click labels already set, so renders don't send TalkBack a change each time. */
+    private val clickLabels = HashMap<Int, String?>()
+
+    private fun setClickLabel(view: View, label: String?) {
+        if (clickLabels.containsKey(view.id) && clickLabels[view.id] == label) return
+        clickLabels[view.id] = label
+        ViewCompat.replaceAccessibilityAction(view, AccessibilityActionCompat.ACTION_CLICK, label, null)
+    }
+
+    private val icons = HashMap<Int, Int>()
+
+    private fun setIconIfChanged(button: MaterialButton, @DrawableRes icon: Int) {
+        if (icons[button.id] == icon) return
+        icons[button.id] = icon
+        button.setIconResource(icon)
     }
 
     private fun renderTorch() = with(binding.lightButton) {
@@ -749,46 +926,22 @@ class MainActivity : AppCompatActivity() {
         alpha = if (state.enabled) 1f else DISABLED_ALPHA
     }
 
-    /** The light, focus and colour buttons: accent colour when they're not in their default state. */
+    /** Which buttons are drawn highlighted now, so a render repaints only what changed. */
+    private val painted = HashMap<Int, Boolean>()
+
+    /**
+     * The light, brightness, focus and colour buttons: accent colour when they're not in their
+     * default state (or, for brightness and focus, while the ring adjusts them).
+     */
     private fun paintStateButton(button: MaterialButton, highlighted: Boolean) {
+        if (painted[button.id] == highlighted) return
+        painted[button.id] = highlighted
         val context = button.context
         val background = ContextCompat.getColor(context, if (highlighted) R.color.accent else R.color.control_background)
         val foreground = ContextCompat.getColor(context, if (highlighted) R.color.on_accent else R.color.control_foreground)
         button.backgroundTintList = ColorStateList.valueOf(background)
         button.setTextColor(foreground)
         button.iconTint = ColorStateList.valueOf(foreground)
-    }
-
-    private fun renderFocus() = with(binding) {
-        val mode = focusMode
-        val ready = camera != null
-        focusButton.isEnabled = ready
-        focusButton.setText(mode.text)
-        focusButton.setIconResource(mode.icon)
-        ViewCompat.setStateDescription(focusButton, getString(mode.text))
-        ViewCompat.replaceAccessibilityAction(
-            focusButton, AccessibilityActionCompat.ACTION_CLICK, getString(mode.buttonAction), null,
-        )
-        paintStateButton(focusButton, mode.highlighted)
-        focusButton.alpha = if (ready) 1f else DISABLED_ALPHA
-        focusSlider.isEnabled = ready
-        focusNear.isEnabled = ready && focusSlider.value > 0f
-        focusFar.isEnabled = ready && focusSlider.value < ManualFocus.SLIDER_MAX
-        renderAdjustRows()
-    }
-
-    /**
-     * The adjust tabs and the one slider row they choose. Focus only on phones with manual
-     * focus, and not while frozen; if it goes, zoom is chosen.
-     */
-    private fun renderAdjustRows() = with(binding) {
-        val focusTab = manualFocus != null && !frozen
-        tabFocus.isVisible = focusTab
-        if (!focusTab && adjustGroup.checkedButtonId == R.id.tabFocus) adjustGroup.check(R.id.tabZoom)
-        val checked = adjustGroup.checkedButtonId
-        zoomRow.isVisible = checked == R.id.tabZoom || checked == View.NO_ID
-        brightnessRow.isVisible = checked == R.id.tabBrightness
-        focusRow.isVisible = checked == R.id.tabFocus
     }
 
     // ---- Colours -------------------------------------------------------------------------------
@@ -800,7 +953,7 @@ class MainActivity : AppCompatActivity() {
         settings.colourMode = mode
         applyPreviewFilter()
         applyFrozenFilter()
-        // The slider keeps its place (the screen's brightness); live, the camera follows it.
+        // The brightness keeps its place (the screen's brightness); live, the camera follows it.
         if (flips) applyLiveExposure()
         renderColour()
         // TalkBack hears the button's new state; sighted users see the name for a moment.
@@ -838,53 +991,53 @@ class MainActivity : AppCompatActivity() {
 
     // ---- Brightness ----------------------------------------------------------------------------
 
-    private fun setUpBrightness() = with(binding) {
-        brightnessSlider.addOnChangeListener { _, value, _ ->
-            if (updatingBrightness) return@addOnChangeListener
-            if (frozen) {
-                frozenLevel = value.roundToInt()
-                applyFrozenFilter()
-            } else {
-                applyLiveExposure(value)
-            }
-            renderBrightnessButtons()
-        }
-        brightnessDown.setOnClickListener { stepBrightness(-1) }
-        brightnessUp.setOnClickListener { stepBrightness(1) }
-        brightnessSlider.setLabelFormatter { value -> spokenBrightness(value) }
-    }
-
-    private fun stepBrightness(steps: Int) = with(binding.brightnessSlider) {
-        val next = if (frozen) {
-            (value.roundToInt() + steps).coerceIn(-Brightness.FROZEN_LEVELS, Brightness.FROZEN_LEVELS).toFloat()
+    /** The ring turned brightness to [value]: frozen, the picture's level; live, the camera's exposure. */
+    private fun setBrightness(value: Float) {
+        if (frozen) {
+            frozenLevel = value.roundToInt().coerceIn(-Brightness.FROZEN_LEVELS, Brightness.FROZEN_LEVELS)
+            applyFrozenFilter()
         } else {
-            val range = exposure ?: return@with
-            range.stepFrom(value.roundToInt(), steps).toFloat()
+            brightnessValue = value
+            applyLiveExposure(value)
         }
-        if (next != value) value = next
     }
 
-    /** "Normal", "3 steps lighter", "2 steps darker": steps of the slider from its middle. */
-    private fun spokenBrightness(value: Float): String {
-        val level = if (frozen) value.roundToInt() else exposure?.level(value.roundToInt()) ?: 0
-        return when {
-            level > 0 -> resources.getQuantityString(R.plurals.brightness_lighter, level, level)
-            level < 0 -> resources.getQuantityString(R.plurals.brightness_darker, -level, -level)
-            else -> getString(R.string.brightness_normal)
+    /** One step darker (−) or lighter (+), like the old darker / lighter buttons. */
+    private fun stepBrightness(steps: Int) {
+        if (frozen) {
+            val next = (frozenLevel + steps).coerceIn(-Brightness.FROZEN_LEVELS, Brightness.FROZEN_LEVELS)
+            if (next != frozenLevel) setBrightness(next.toFloat())
+        } else {
+            val range = exposure ?: return
+            val next = range.stepFrom(brightnessValue.roundToInt(), steps).toFloat()
+            if (next != brightnessValue) setBrightness(next)
         }
+        renderRing()
+    }
+
+    /** The brightness level now, in steps from "as the camera sees it" (+ lighter). */
+    private fun brightnessLevel(): Int = brightnessLevelAt(if (frozen) frozenLevel.toFloat() else brightnessValue)
+
+    private fun brightnessLevelAt(value: Float): Int = if (frozen) value.roundToInt() else exposure?.level(value.roundToInt()) ?: 0
+
+    /** "Normal", "3 steps lighter", "2 steps darker". */
+    private fun spokenBrightness(level: Int): String = when {
+        level > 0 -> resources.getQuantityString(R.plurals.brightness_lighter, level, level)
+        level < 0 -> resources.getQuantityString(R.plurals.brightness_darker, -level, -level)
+        else -> getString(R.string.brightness_normal)
     }
 
     /**
-     * The camera's exposure for the live slider's position: + is more light, except in the
-     * inverting colour modes, where less light makes the screen lighter.
+     * The camera's exposure for the live brightness: + is more light, except in the inverting
+     * colour modes, where less light makes the screen lighter.
      */
-    private fun applyLiveExposure(sliderValue: Float = binding.brightnessSlider.value) {
+    private fun applyLiveExposure(sliderValue: Float = brightnessValue) {
         val range = exposure ?: return
         if (frozen) return
         camera?.cameraControl?.setExposureCompensationIndex(range.cameraIndex(sliderValue, colourMode))?.logFailure("exposure")
     }
 
-    /** The camera's exposure-compensation range, for the live slider. */
+    /** The camera's exposure-compensation range, for live brightness. */
     private fun readExposure() {
         val state = camera?.cameraInfo?.exposureState
         exposure = if (state != null && state.isExposureCompensationSupported) {
@@ -894,46 +1047,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * The brightness slider: the camera's exposure live (hidden, with the reason, on a camera
-     * without it), the picture's brightness when frozen.
-     */
-    private fun renderBrightness() = with(binding) {
-        val range = exposure
-        val unavailable = !frozen && range == null && camera != null
-        brightnessDown.isVisible = !unavailable
-        brightnessSlider.isVisible = !unavailable
-        brightnessUp.isVisible = !unavailable
-        brightnessUnavailable.isVisible = unavailable
-        updatingBrightness = true
-        if (frozen) {
-            setBrightnessRange(-Brightness.FROZEN_LEVELS, Brightness.FROZEN_LEVELS, 1, frozenLevel.toFloat())
-            brightnessSlider.isEnabled = true
-        } else if (range != null) {
-            val index = camera?.cameraInfo?.exposureState?.exposureCompensationIndex ?: 0
-            setBrightnessRange(range.from, range.to, range.step, range.sliderValue(index, colourMode))
-            brightnessSlider.isEnabled = true
-        } else {
-            setBrightnessRange(-Brightness.FROZEN_LEVELS, Brightness.FROZEN_LEVELS, 1, 0f)
-            brightnessSlider.isEnabled = false
-        }
-        updatingBrightness = false
-        renderBrightnessButtons()
-    }
-
-    private fun setBrightnessRange(from: Int, to: Int, step: Int, value: Float) = with(binding.brightnessSlider) {
-        // The slider checks these together when it next draws; all four change here at once.
-        stepSize = step.toFloat()
-        valueFrom = from.toFloat()
-        valueTo = to.toFloat()
-        this.value = value
-    }
-
-    private fun renderBrightnessButtons() = with(binding) {
-        val slider = brightnessSlider
-        val usable = slider.isEnabled
-        brightnessDown.isEnabled = usable && slider.value > slider.valueFrom
-        brightnessUp.isEnabled = usable && slider.value < slider.valueTo
+    /** The live brightness from the camera's exposure: when it opens, and back from frozen. */
+    private fun syncBrightnessFromCamera() {
+        val range = exposure ?: return
+        val index = camera?.cameraInfo?.exposureState?.exposureCompensationIndex ?: return
+        brightnessValue = range.sliderValue(index, colourMode)
     }
 
     // ---- Freeze --------------------------------------------------------------------------------
@@ -1104,6 +1222,7 @@ class MainActivity : AppCompatActivity() {
         pendingSave = false
         binding.frozenView.clear()
         old.forEach { recycleLater(it) }
+        syncBrightnessFromCamera()
         renderCameraArea()
         renderFreeze()
     }
@@ -1135,9 +1254,7 @@ class MainActivity : AppCompatActivity() {
             button.alpha = if (button.isEnabled) 1f else DISABLED_ALPHA
         }
         renderFreezeButton()
-        renderAdjustRows()
-        renderZoom()
-        renderBrightness()
+        renderRing()
     }
 
     private fun renderFreezeButton() = with(binding.freezeButton) {
@@ -1314,6 +1431,7 @@ class MainActivity : AppCompatActivity() {
                 val ratio = ZoomMath.pinchRatio(zoom.zoomRatio, detector.scaleFactor, zoom.minZoomRatio, zoom.maxZoomRatio)
                 camera?.cameraControl?.setZoomRatio(ratio)
                 rememberZoom(ZoomMath.ratioToLinear(ratio, zoom.minZoomRatio, zoom.maxZoomRatio))
+                if (ringMode != RingMode.ZOOM) setRingMode(RingMode.ZOOM)
                 return true
             }
         })
@@ -1342,7 +1460,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ---- Focus: Auto, Locked (tap), Manual (slider) ---------------------------------------------
+    // ---- Focus: Auto, Locked (tap), Manual (the ring) -------------------------------------------
 
     @VisibleForTesting
     internal fun onFocusEvent(event: FocusEvent, at: PointF? = null) {
@@ -1376,12 +1494,12 @@ class MainActivity : AppCompatActivity() {
                 }
                 FocusMode.MANUAL -> {
                     if (old == FocusMode.LOCKED) cam.cameraControl.cancelFocusAndMetering().logFailure("cancel focus")
-                    setManualFocus(cam, binding.focusSlider.value)
+                    setManualFocus(cam, focusValue)
                 }
             }
         }
         if (new != old) debugLog("focus $old -> $new ($event)")
-        renderFocus()
+        renderRing()
     }
 
     /** Runs [lock] once continuous autofocus has settled (see [AfSettle]), or after its timeout. */
@@ -1438,7 +1556,7 @@ class MainActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
-    /** Autofocus off, and the lens at the slider's distance. */
+    /** Autofocus off, and the lens at the focus ring's distance. */
     @OptIn(ExperimentalCamera2Interop::class)
     private fun setManualFocus(cam: Camera, sliderValue: Float) {
         val range = manualFocus ?: return
@@ -1463,7 +1581,7 @@ class MainActivity : AppCompatActivity() {
         if (guard.onTimeout(SystemClock.elapsedRealtime()) == ManualFocusGuard.State.FAILED) onManualFocusIgnored(guard)
     }
 
-    /** The camera ignores manual focus: hide the slider for this camera and go back to Auto. */
+    /** The camera ignores manual focus: no focus ring for this camera, and back to Auto. */
     private fun onManualFocusIgnored(guard: ManualFocusGuard) {
         if (guard !== focusGuard || manualFocus == null) return
         Log.w(TAG, "Manual focus turned off for this camera: ${guard.failure}")
@@ -1477,7 +1595,7 @@ class MainActivity : AppCompatActivity() {
         Camera2CameraControl.from(cam.cameraControl).clearCaptureRequestOptions().also { it.logFailure("clear manual focus") }
 
     /**
-     * Each frame's result, on a camera thread. Outside Manual, the focus slider follows where
+     * Each frame's result, on a camera thread. Outside Manual, the focus ring follows where
      * autofocus put the lens, so taking it over doesn't jump the focus.
      */
     private fun onFrameResult(result: TotalCaptureResult) {
@@ -1511,17 +1629,16 @@ class MainActivity : AppCompatActivity() {
         val now = SystemClock.elapsedRealtime()
         if (now - lastFocusSync < FOCUS_SYNC_MS || abs(diopters - previous) < FOCUS_SYNC_DIOPTERS) return
         lastFocusSync = now
-        binding.focusSlider.post { syncFocusSliderToLens() }
+        binding.lensRing.post { syncFocusRingToLens() }
     }
 
-    private fun syncFocusSliderToLens() {
+    private fun syncFocusRingToLens() {
         val range = manualFocus ?: return
         val diopters = lensDiopters
-        if (focusMode == FocusMode.MANUAL || draggingFocusSlider || diopters.isNaN()) return
-        updatingFocusSlider = true
-        binding.focusSlider.value = range.dioptersToSlider(diopters)
-        updatingFocusSlider = false
-        renderFocus()
+        val turning = ringMode == RingMode.FOCUS && binding.lensRing.isDragging
+        if (focusMode == FocusMode.MANUAL || turning || diopters.isNaN()) return
+        focusValue = range.dioptersToSlider(diopters)
+        if (ringMode == RingMode.FOCUS) renderRing()
     }
 
     private fun <T> ListenableFuture<T>.logFailure(what: String) {
@@ -1541,6 +1658,7 @@ class MainActivity : AppCompatActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         // Frozen: the keys zoom the frozen picture, and are taken at the ends too.
         if (frozenKeysZoom(keyCode)) {
+            if (ringMode != RingMode.ZOOM) setRingMode(RingMode.ZOOM)
             zoomBySteps(VolumeKeyZoom.stepsFor(keyCode))
             return true
         }
@@ -1552,6 +1670,8 @@ class MainActivity : AppCompatActivity() {
             canZoom = zoom != null && ZoomMath.canZoom(zoom.minZoomRatio, zoom.maxZoomRatio),
         )
         if (result.consumed) {
+            // The keys zoom: the ring shows it.
+            if (ringMode != RingMode.ZOOM) setRingMode(RingMode.ZOOM)
             result.newLinear?.let {
                 camera?.cameraControl?.setLinearZoom(it)
                 rememberZoom(it)
@@ -1620,7 +1740,7 @@ class MainActivity : AppCompatActivity() {
         const val STATE_PREFS = "magnifier_state"
         const val KEY_ASKED_CAMERA = "asked_camera_permission"
 
-        /** The focus slider follows the lens at most this often, and only for a change this big. */
+        /** The focus ring follows the lens at most this often, and only for a change this big. */
         private const val FOCUS_SYNC_MS = 250L
         private const val FOCUS_SYNC_DIOPTERS = 0.05f
 

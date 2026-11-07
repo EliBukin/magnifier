@@ -36,6 +36,9 @@ class FrozenView @JvmOverloads constructor(
     /** Called with the new scale whenever the zoom changes (by touch or by [zoomTo]). */
     var onScaleChanged: ((Float) -> Unit)? = null
 
+    /** Called when a finger zooms the picture (pinch or double tap), before the zoom changes. */
+    var onUserZoom: (() -> Unit)? = null
+
     var bitmap: Bitmap? = null
         private set
 
@@ -198,6 +201,7 @@ class FrozenView @JvmOverloads constructor(
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(detector: ScaleGestureDetector): Boolean {
             animator?.cancel()
+            onUserZoom?.invoke()
             applyZoom(scale * detector.scaleFactor, detector.focusX, detector.focusY)
             return true
         }
@@ -213,6 +217,7 @@ class FrozenView @JvmOverloads constructor(
         }
 
         override fun onDoubleTap(e: MotionEvent): Boolean {
+            onUserZoom?.invoke()
             zoomTo(FrozenZoom.doubleTapTarget(scale, minScale, maxScale), e.x, e.y, animate = true)
             return true
         }

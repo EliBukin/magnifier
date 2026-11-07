@@ -1,9 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Every control is at least this tall and wide (above the 48dp minimum, for shaky hands). -->
+    <!-- The big buttons on the permission and error panels (above the 48dp minimum, for shaky hands). -->
     <dimen name="touch_target">64dp</dimen>
-    <dimen name="controls_padding">12dp</dimen>
-    <!-- The action row (Freeze, light, ...) and the adjust tabs above the slider. -->
-    <dimen name="tile_height">76dp</dimen>
-    <dimen name="tab_height">56dp</dimen>
+
+    <!-- The panel. These are for phones under 400dp wide (a 720 x 1560 screen at xhdpi is 360dp):
+         four round buttons and Freeze in one row. values-w400dp has the bigger sizes. -->
+    <dimen name="panel_side_padding">6dp</dimen>
+    <dimen name="panel_top_padding">4dp</dimen>
+    <dimen name="panel_bottom_padding">8dp</dimen>
+    <!-- The round buttons beside Freeze: never under 56dp. -->
+    <dimen name="side_button">58dp</dimen>
+    <dimen name="freeze_button">88dp</dimen>
+    <!-- Freeze is taller than the other buttons; the row moves up by the difference, into the ring. -->
+    <dimen name="freeze_rise">-30dp</dimen>
+    <!-- The ring's centre: what it adjusts and the value, just above Freeze. -->
+    <dimen name="ring_centre_width">160dp</dimen>
+    <dimen name="ring_centre_bottom">36dp</dimen>
+    <dimen name="ring_caption_height">20dp</dimen>
+    <dimen name="ring_value_height">44dp</dimen>
 </resources>
