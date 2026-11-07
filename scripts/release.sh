@@ -26,13 +26,14 @@ GATES=(clean check lintRelease bundleRelease)
 EMBEDDED_MAPPING=BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map
 
 # Everything the release's manifest may request or declare, one entry per line of
-# manifest_permissions' output, matched exactly. The app asks for the camera and nothing else: no
-# internet, ever. A new permission must be added here on purpose (and to Play's Data safety form,
-# the privacy policy and docs/RELEASING.md), or the release stops. Examples of the line format:
-#   "uses-permission android.permission.WRITE_EXTERNAL_STORAGE maxSdkVersion=28"
+# manifest_permissions' output, matched exactly. The app asks for the camera, plus storage for
+# saving pictures on Android 7-9 only (maxSdkVersion 28), and nothing else: no internet, ever. A new
+# permission must be added here on purpose (and to Play's Data safety form, the privacy policy and
+# docs/RELEASING.md), or the release stops. Example of another line format:
 #   "uses-permission-sdk-23 android.permission.SOME_PERMISSION"
 ALLOWED_PERMISSIONS=(
   "uses-permission android.permission.CAMERA"
+  "uses-permission android.permission.WRITE_EXTERNAL_STORAGE maxSdkVersion=28"
 )
 # androidx.core's ContextCompat.registerReceiver(..., RECEIVER_NOT_EXPORTED) needs a permission the
 # app's manifest removes (see AndroidManifest.xml). Its code carries this string; it must not be in

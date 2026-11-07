@@ -65,11 +65,18 @@ signs a release build, and it never falls back to the debug key. Debug builds
 and every unit test work without any production secret, including on a
 working tree with uncommitted changes.
 
-## Permissions: the camera, and nothing else
+## Permissions: the camera, storage on old Android, and nothing else
 
-The app asks for one permission, `android.permission.CAMERA`. No internet, so
-nothing can leave the phone, and Play's Data safety answer is "no data
-collected".
+The app asks for two permissions, and no internet:
+
+| Permission | Why | When it is asked |
+|---|---|---|
+| `android.permission.CAMERA` | The magnifier is the camera's picture. | At the first start, after an explanation. |
+| `android.permission.WRITE_EXTERNAL_STORAGE`, `maxSdkVersion="28"` | Saving a frozen picture to `Pictures/Bukin Magnifier` on Android 7-9. Android 10 and later save through MediaStore without any permission, so the manifest limits it to API 28. | Only when the user taps Save on Android 7-9, never at start. |
+
+Nothing leaves the phone unless the user shares a picture through the
+system's share sheet, to an app they pick. So Play's Data safety answer is
+"no data collected".
 
 Libraries can add permissions of their own through manifest merging. Two do
 today, and `app/src/main/AndroidManifest.xml` removes both with
@@ -92,11 +99,12 @@ merged manifest:
   `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` string: that code would need the
   permission removed above.
 
-To allow a new permission (step 2's saving to Pictures may need
-`WRITE_EXTERNAL_STORAGE` up to Android 9), add its exact line to
-`ALLOWED_PERMISSIONS`, for example
-`"uses-permission android.permission.WRITE_EXTERNAL_STORAGE maxSdkVersion=28"`,
-and update Play's Data safety form and the privacy policy to match. Check the
+`ALLOWED_PERMISSIONS` holds exactly the two lines above:
+`"uses-permission android.permission.CAMERA"` and
+`"uses-permission android.permission.WRITE_EXTERNAL_STORAGE maxSdkVersion=28"`.
+The storage line only matches with its `maxSdkVersion=28`, so a build that
+dropped the limit would fail. To allow another permission, add its exact line
+there, and update Play's Data safety form and the privacy policy to match. Check the
 merged manifest of a release build by hand with:
 
 ```bash

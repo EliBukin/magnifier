@@ -68,6 +68,9 @@ dependencies {
     implementation("androidx.camera:camera-camera2:$cameraxVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
     implementation("androidx.camera:camera-view:$cameraxVersion")
+    // Reads a frozen photo's orientation. Already in the app through camera-core (the same 1.4.2);
+    // declared so the app's own code can use it instead of the platform's older ExifInterface.
+    implementation("androidx.exifinterface:exifinterface:1.4.2")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.16.1")

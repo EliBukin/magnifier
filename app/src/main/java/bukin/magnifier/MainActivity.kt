@@ -23,7 +23,6 @@ import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.CaptureResult
 import android.hardware.camera2.TotalCaptureResult
-import android.media.ExifInterface
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
@@ -69,6 +68,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import androidx.core.graphics.createBitmap
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
@@ -76,6 +76,7 @@ import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
+import androidx.exifinterface.media.ExifInterface
 import bukin.magnifier.databinding.ActivityMainBinding
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.slider.Slider
@@ -1174,7 +1175,7 @@ class MainActivity : AppCompatActivity() {
     private fun renderJpeg(picture: Picture, matrix: FloatArray, file: File): File {
         val source = picture.bitmap
         val (w, h) = PhotoDecode.uprightSize(source.width, source.height, picture.rotation)
-        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val out = createBitmap(w, h)
         try {
             val turn = Matrix().apply {
                 setValues(PhotoDecode.rotation(source.width.toFloat(), source.height.toFloat(), picture.rotation).values())

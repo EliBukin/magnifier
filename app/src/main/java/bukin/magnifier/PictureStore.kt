@@ -1,5 +1,6 @@
 package bukin.magnifier
 
+import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Context
@@ -66,6 +67,7 @@ object PictureStore {
         }
 
     /** The collection new pictures go into. */
+    @SuppressLint("InlinedApi") // VOLUME_EXTERNAL_PRIMARY is only used on Android 10+, where it exists.
     fun collection(sdk: Int): Uri = if (sdk >= Build.VERSION_CODES.Q) {
         MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
     } else {

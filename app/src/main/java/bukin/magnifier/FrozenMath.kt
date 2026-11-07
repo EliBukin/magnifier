@@ -1,6 +1,6 @@
 package bukin.magnifier
 
-import android.media.ExifInterface
+import androidx.exifinterface.media.ExifInterface
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.pow
