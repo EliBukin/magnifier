@@ -20,8 +20,12 @@ object ZoomMath {
      * swipe makes on the slider. */
     const val STEP = 0.05f
 
-    // Treats 0.39999 as 0.40 when finding the step grid, against float error.
-    private const val GRID_EPSILON = 1e-3f
+    // A zoom less than a quarter step below a grid point counts as on it, so every step moves at
+    // least a quarter step (and at most one and a quarter). The camera echoes a zoom a little off
+    // the grid (the A20 reports 1.5975x for 1.6x, linear 0.4995 for 0.5), and a turn of the lens
+    // ring stops anywhere: without this, the next tap or key press could move 0.0005, which shows
+    // nothing.
+    private const val GRID_EPSILON = 0.25f
 
     fun sliderToLinear(value: Float): Float = (value / SLIDER_MAX).coerceIn(0f, 1f)
 
@@ -30,7 +34,8 @@ object ZoomMath {
     /**
      * The linear zoom [steps] steps away from [linear] (negative = zoom out), on the grid of
      * [STEP]s, clamped to 0..1. Starting between two grid points, the first step goes to the
-     * next grid point in that direction.
+     * next grid point in that direction, or the one after if the next is less than a quarter
+     * step away.
      */
     fun stepLinear(linear: Float, steps: Int): Float {
         val current = linear.coerceIn(0f, 1f)

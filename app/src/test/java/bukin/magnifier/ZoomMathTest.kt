@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
 import java.util.Locale
 
 class ZoomMathTest {
@@ -54,6 +55,24 @@ class ZoomMathTest {
         // CameraX may report 0.39999 for 0.40.
         assertEquals(0.45f, ZoomMath.stepLinear(0.39999f, 1), eps)
         assertEquals(0.35f, ZoomMath.stepLinear(0.40001f, -1), eps)
+    }
+
+    @Test
+    fun aStepFromJustOffTheGridAlwaysShows() {
+        // After a ring drag to the middle the A20 echoes linear 0.4995 (1.5975x for 1.6x).
+        assertEquals(0.55f, ZoomMath.stepLinear(0.4995f, 1), eps)
+        assertEquals(0.45f, ZoomMath.stepLinear(0.5013f, -1), eps)
+        // Every step from anywhere moves a quarter step at least, one and a quarter at most.
+        var start = 0f
+        while (start <= 0.9f) {
+            for (dir in listOf(1, -1)) {
+                val moved = abs(ZoomMath.stepLinear(start, dir) - start)
+                if (start > 0.06f) {
+                    assertTrue("from $start by $dir: $moved", moved >= ZoomMath.STEP / 4 - 1e-5f && moved <= ZoomMath.STEP * 1.25f + 1e-5f)
+                }
+            }
+            start += 0.0037f
+        }
     }
 
     @Test
