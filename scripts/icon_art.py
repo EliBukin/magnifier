@@ -282,9 +282,8 @@ def surface_to_pil(surface):
     from PIL import Image
 
     w, h = surface.get_width(), surface.get_height()
-    img = Image.frombuffer("RGBA", (w, h), bytes(surface.get_data()), "raw", "BGRA", surface.get_stride(), 1)
-    # cairo stores premultiplied alpha; un-premultiply for PIL.
-    return img.copy()
+    # cairo stores premultiplied BGRA; the "BGRa" raw mode un-premultiplies it for PIL.
+    return Image.frombuffer("RGBA", (w, h), bytes(surface.get_data()), "raw", "BGRa", surface.get_stride(), 1).copy()
 
 
 # ---------------------------------------------------------------- checks

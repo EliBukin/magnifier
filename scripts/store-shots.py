@@ -3,6 +3,9 @@
 
     python3 scripts/store-shots.py [--icon A|B|C] [--out docs/play/assets/draft]
 
+--icon defaults to the icon scripts/make-icon.py put in the app
+(docs/play/assets/icon.txt).
+
 Inputs (committed, so anyone can rerun this):
     <out>/raw/en/NN-name.png   screenshots of the app in English (A20, 720 x 1560)
     <out>/raw/he/NN-name.png   the same screens in Hebrew (emulator, 720 x 1600)
@@ -163,9 +166,14 @@ def feature_graphic(lang, icon_key):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--icon", default="B", choices=sorted(art.DESIGNS))
+    chosen = os.path.join(ROOT, "docs/play/assets/icon.txt")  # written by scripts/make-icon.py
+    default_icon = open(chosen).read().strip() if os.path.exists(chosen) else None
+    ap.add_argument("--icon", default=default_icon, choices=sorted(art.DESIGNS),
+                    help="the launcher icon; defaults to the one make-icon.py put in the app")
     ap.add_argument("--out", default=os.path.join(ROOT, "docs/play/assets/draft"))
     args = ap.parse_args()
+    if args.icon is None:
+        ap.error("no icon chosen yet: run scripts/make-icon.py <A|B|C> first, or pass --icon")
     made, missing = [], []
     for lang, play_lang in LANG_DIRS.items():
         out_dir = os.path.join(args.out, "screenshots", play_lang)
