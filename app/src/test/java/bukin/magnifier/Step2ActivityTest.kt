@@ -110,6 +110,17 @@ class Step2ActivityTest {
     }
 
     @Test
+    fun backWhileFrozenGoesBackToLiveAndThenLeaves() {
+        val activity = launch().get()
+        activity.freezeForTest(paper())
+        activity.onBackPressedDispatcher.onBackPressed()
+        assertFalse(activity.frozen)
+        assertFalse(activity.isFinishing)
+        activity.onBackPressedDispatcher.onBackPressed()
+        assertTrue(activity.isFinishing)
+    }
+
+    @Test
     fun theFocusTabGoesWhileFrozenAndZoomIsChosen() {
         val activity = launch().get()
         activity.manualFocus = ManualFocus(10f, calibrated = true)
@@ -229,6 +240,17 @@ class Step2ActivityTest {
         assertEquals(FocusMode.AUTO, activity.focusMode)
         controller.pause().stop()
         assertEquals(0.4f, MagnifierSettings(app).zoomLinear, 0f)
+    }
+
+    @Test
+    fun aZoomChangeIsSavedSoonEvenIfTheAppIsKilledBeforeStopping() {
+        val activity = launch().get()
+        // No camera in Robolectric, so the volume keys aren't taken; the slider is the user's.
+        activity.findViewById<Slider>(R.id.zoomSlider).value = 35f
+        assertEquals(0.35f, activity.wantedLinearZoom, 1e-4f)
+        assertEquals(0f, MagnifierSettings(app).zoomLinear, 0f)
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(600))
+        assertEquals(0.35f, MagnifierSettings(app).zoomLinear, 1e-4f)
     }
 
     @Test

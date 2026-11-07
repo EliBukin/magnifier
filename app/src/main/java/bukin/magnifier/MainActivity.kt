@@ -36,6 +36,7 @@ import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -217,6 +218,11 @@ class MainActivity : AppCompatActivity() {
         binding.messageView.animate().alpha(0f).setDuration(MESSAGE_FADE_MS).withEndAction { binding.messageView.isVisible = false }
     }
 
+    /** Back while frozen goes back to the live picture, like the Live button; otherwise it leaves as usual. */
+    private val backToLive = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() = unfreeze()
+    }
+
     private val requestCamera =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { refreshPermission() }
 
@@ -239,6 +245,7 @@ class MainActivity : AppCompatActivity() {
         setUpControls()
         setUpPreviewGestures()
         binding.frozenView.onScaleChanged = { renderZoom() }
+        onBackPressedDispatcher.addCallback(this, backToLive)
         applyPreviewFilter()
         renderZoom()
         renderTorch()
@@ -262,6 +269,7 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         // Leaving the app ends a focus lock or manual focus: the next look starts in Auto.
         onFocusEvent(FocusEvent.LEFT_APP)
+        binding.root.removeCallbacks(saveZoom)
         settings.zoomLinear = wantedLinearZoom
         super.onStop()
     }
@@ -567,7 +575,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 val linear = ZoomMath.sliderToLinear(value)
                 camera?.cameraControl?.setLinearZoom(linear)
-                wantedLinearZoom = linear
+                rememberZoom(linear)
             }
         }
         zoomSlider.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
@@ -656,8 +664,20 @@ class MainActivity : AppCompatActivity() {
         if (!ZoomMath.canZoom(zoom.minZoomRatio, zoom.maxZoomRatio)) return
         val target = ZoomMath.stepLinear(zoom.linearZoom, steps)
         camera?.cameraControl?.setLinearZoom(target)
-        wantedLinearZoom = target
+        rememberZoom(target)
     }
+
+    /**
+     * The zoom the user chose, saved half a second after the last change (a slider drag makes
+     * many), so it survives the app being killed without a chance to save on the way out.
+     */
+    private fun rememberZoom(linear: Float) {
+        wantedLinearZoom = linear
+        binding.root.removeCallbacks(saveZoom)
+        binding.root.postDelayed(saveZoom, ZOOM_SAVE_DELAY_MS)
+    }
+
+    private val saveZoom = Runnable { settings.zoomLinear = wantedLinearZoom }
 
     private fun formatZoom(ratio: Float): String = ZoomMath.formatRatio(ratio, resources.configuration.locales[0])
 
@@ -1088,7 +1108,9 @@ class MainActivity : AppCompatActivity() {
     private fun renderFreeze() = with(binding) {
         val ready = frozenPicture != null
         frozenView.isVisible = frozen
-        photoProgress.isVisible = frozen && !ready
+        // Busy: the sharp photo is on its way, or a picture is being prepared to save or share.
+        photoProgress.isVisible = frozen && (!ready || exporting)
+        backToLive.isEnabled = frozen
         previewView.importantForAccessibility =
             if (frozen) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
         lightButton.isVisible = !frozen
@@ -1278,7 +1300,7 @@ class MainActivity : AppCompatActivity() {
                 if (!ZoomMath.canZoom(zoom.minZoomRatio, zoom.maxZoomRatio)) return true
                 val ratio = ZoomMath.pinchRatio(zoom.zoomRatio, detector.scaleFactor, zoom.minZoomRatio, zoom.maxZoomRatio)
                 camera?.cameraControl?.setZoomRatio(ratio)
-                wantedLinearZoom = ZoomMath.ratioToLinear(ratio, zoom.minZoomRatio, zoom.maxZoomRatio)
+                rememberZoom(ZoomMath.ratioToLinear(ratio, zoom.minZoomRatio, zoom.maxZoomRatio))
                 return true
             }
         })
@@ -1519,7 +1541,7 @@ class MainActivity : AppCompatActivity() {
         if (result.consumed) {
             result.newLinear?.let {
                 camera?.cameraControl?.setLinearZoom(it)
-                wantedLinearZoom = it
+                rememberZoom(it)
             }
             return true
         }
@@ -1596,6 +1618,7 @@ class MainActivity : AppCompatActivity() {
         /** The biggest photo Freeze asks for: 4:3, about 16 megapixels. */
         private val PHOTO_MAX_SIZE = Size(4640, 3480)
         private const val JPEG_QUALITY = 92
+        private const val ZOOM_SAVE_DELAY_MS = 500L
 
         private const val SHORT_MESSAGE_MS = 1500L
         private const val LONG_MESSAGE_MS = 3500L
