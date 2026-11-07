@@ -10,5 +10,4 @@
          a white page (white under it shows as #0F0F0F). -->
     <color name="controls_scrim">#F0000000</color>
     <color name="panel">#E6202020</color>
-    <color name="launcher_background">#FF1E2A44</color>
 </resources>

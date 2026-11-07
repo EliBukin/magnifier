@@ -121,7 +121,7 @@ Bukin Magnifier הופכת את הטלפון לזכוכית מגדלת. מכוו
 
 | Asset | Play's requirement | Status |
 |---|---|---|
-| App icon | 512 x 512, 32-bit PNG, up to 1024 KB | `assets/icon-512.png` once the owner picks an icon (step 3 drafts A/B/C in `Magnifier-notes/step3/icon-options.png`) |
+| App icon | 512 x 512, 32-bit PNG, up to 1024 KB | `assets/icon-512.png`: icon G "Glow ring" (owner's pick, 2026-11-08), the launcher icon's visible square, made by `scripts/make-icon.py G` |
 | Feature graphic | 1024 x 500, JPEG or 24-bit PNG, no alpha | Draft: `assets/draft/feature-graphic-1024x500.png` |
 | Phone screenshots | 2 to 8; JPEG or 24-bit PNG, no alpha; each side 320 to 3840 px; the long side at most twice the short | Drafts, EN and HE: `assets/draft/screenshots/`. **Retaken from the release build at step 5a** (owner rule). |
 

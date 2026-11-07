@@ -86,8 +86,9 @@ checked by `python3 scripts/check-listing.py`), Data safety, release notes,
 content-rating notes, the owner's Play Console checklist, and the graphics
 (`assets/`; `python3 scripts/store-shots.py` composes the screenshots and the
 feature graphic). The launcher icon, Play's 512 px icon and the site's favicon
-all come from `scripts/icon_art.py` through `python3 scripts/make-icon.py
-<A|B|C>`. Open-source licences: `THIRD_PARTY_NOTICES.md`.
+all come from `scripts/icon_art.py` through `python3 scripts/make-icon.py G`
+(icon G "Glow ring": a bold yellow glass with a soft glow, on black; adaptive,
+with a monochrome layer for themed icons). Open-source licences: `THIRD_PARTY_NOTICES.md`.
 
 ## Building
 

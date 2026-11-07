@@ -34,7 +34,7 @@
             android:layout_height="96dp"
             android:layout_gravity="center_horizontal"
             android:importantForAccessibility="no"
-            android:src="@drawable/ic_launcher_foreground" />
+            android:src="@mipmap/ic_launcher" />
 
         <TextView
             android:id="@+id/aboutTitle"
