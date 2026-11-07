@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- A magnifier needs the rear camera; autofocus and the flash are used when the phone has them. -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="true" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.flash"
+        android:required="false" />
+
+    <!-- The only permission. No internet: nothing ever leaves the phone. scripts/release.sh fails a
+         release whose merged manifest has any other. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Added by libraries, removed here: camera-view brings camera-video and media3, whose manifest
+         asks for the network state (unused: the app plays and uploads nothing). A library that adds
+         INTERNET later fails the release gate in scripts/release.sh; remove it here the same way. -->
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE"
+        tools:node="remove" />
+    <!-- androidx.core declares and requests this signature permission for
+         ContextCompat.registerReceiver(..., RECEIVER_NOT_EXPORTED) before Android 13. Nothing in the
+         app calls that (checked in the R8 output, see docs/RELEASING.md), so it goes too. -->
+    <permission
+        android:name="${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        tools:node="remove" />
+    <uses-permission
+        android:name="${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        tools:node="remove" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@drawable/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Magnifier">
+        <!-- Portrait only for v1. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

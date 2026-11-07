@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Every control is at least this tall and wide (above the 48dp minimum, for shaky hands). -->
+    <dimen name="touch_target">64dp</dimen>
+    <dimen name="controls_padding">12dp</dimen>
+    <dimen name="light_button_min_width">132dp</dimen>
+</resources>

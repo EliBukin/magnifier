@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Camera permission -->
+    <string name="permission_explain_title">גישה למצלמה</string>
+    <string name="permission_explain_body">Bukin Magnifier מציגה את התמונה של המצלמה האחורית, מוגדלת. לשם כך היא צריכה את המצלמה. התמונה נשארת בטלפון: לאפליקציה אין גישה לאינטרנט.</string>
+    <string name="permission_continue">המשך</string>
+    <string name="permission_denied_title">הזכוכית המגדלת צריכה את המצלמה</string>
+    <string name="permission_denied_body">בלי המצלמה אין מה להגדיל. יש להקיש על \"מתן הרשאה\" כדי לאפשר אותה.</string>
+    <string name="permission_grant">מתן הרשאה</string>
+    <string name="permission_blocked_body">המצלמה כבויה עבור האפליקציה הזו. יש לפתוח את הגדרות האפליקציה, להקיש על \"הרשאות\" ולאפשר את \"מצלמה\".</string>
+    <string name="permission_open_settings">פתיחת ההגדרות</string>
+
+    <!-- Camera picture -->
+    <string name="preview_desc">תמונת המצלמה. יש להקיש כדי למקד.</string>
+
+    <!-- Zoom -->
+    <string name="zoom_label">%1$s×</string>
+    <string name="zoom_spoken">הגדלה פי %1$s</string>
+    <string name="zoom_slider_desc">הגדלה</string>
+    <string name="zoom_in_desc">הגדלה</string>
+    <string name="zoom_out_desc">הקטנה</string>
+    <string name="zoom_unavailable">אין הגדלה</string>
+
+    <!-- The LED light -->
+    <string name="light_button">פנס</string>
+    <string name="light_desc">פנס</string>
+    <string name="light_none">אין פנס</string>
+    <string name="light_none_desc">הפנס לא זמין: למצלמה האחורית בטלפון הזה אין פלאש</string>
+    <string name="state_on">פועל</string>
+    <string name="state_off">כבוי</string>
+
+    <!-- When the camera can't start -->
+    <string name="error_no_camera">בטלפון הזה אין מצלמה אחורית, ולכן הזכוכית המגדלת לא יכולה לפעול.</string>
+    <string name="error_in_use">אפליקציה אחרת משתמשת במצלמה. יש לסגור אותה ולהקיש על \"ניסיון חוזר\".</string>
+    <string name="error_disabled">המצלמה חסומה בטלפון הזה כרגע. יש להקיש על \"ניסיון חוזר\".</string>
+    <string name="error_dnd">מצב \"נא לא להפריע\" חוסם את המצלמה. יש לכבות אותו ולהקיש על \"ניסיון חוזר\".</string>
+    <string name="error_generic">לא ניתן היה להפעיל את המצלמה. יש להקיש על \"ניסיון חוזר\".</string>
+    <string name="error_try_again">ניסיון חוזר</string>
+</resources>

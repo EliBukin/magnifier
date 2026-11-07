@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 6-11 Auto Backup (android:fullBackupContent). An allowlist: only what is included here
+     is backed up. Keep in sync with data_extraction_rules.xml (Android 12+) and BackupRulesTest.
+
+     Included: magnifier_settings.xml, ordinary preferences only (from step 2: the last zoom, light
+     and colour mode). Left out on purpose: every picture the app saves or shares (those are the
+     user's, in Pictures or the cache, never in a backup) and magnifier_state.xml (whether the app
+     has asked for the camera yet: only true on this device, so a restored phone asks again). -->
+<full-backup-content>
+    <include domain="sharedpref" path="magnifier_settings.xml" />
+</full-backup-content>

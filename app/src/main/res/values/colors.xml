@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <!-- High-visibility yellow on black throughout: easy to see with low vision. -->
+    <color name="accent">#FFFFD54F</color>
+    <color name="on_accent">#FF000000</color>
+    <color name="control_foreground">#FFFFFFFF</color>
+    <color name="control_background">#FF2B2B2B</color>
+    <color name="controls_scrim">#CC000000</color>
+    <color name="panel">#E6202020</color>
+    <color name="launcher_background">#FF1E2A44</color>
+</resources>

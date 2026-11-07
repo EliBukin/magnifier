@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Bukin Magnifier</string>
+
+    <!-- Camera permission -->
+    <string name="permission_explain_title">Camera access</string>
+    <string name="permission_explain_body">Bukin Magnifier shows the rear camera\'s picture, enlarged. It needs the camera for that. The picture stays on your phone: the app has no internet access.</string>
+    <string name="permission_continue">Continue</string>
+    <string name="permission_denied_title">The magnifier needs the camera</string>
+    <string name="permission_denied_body">Without the camera there is nothing to magnify. Tap Grant to allow it.</string>
+    <string name="permission_grant">Grant</string>
+    <string name="permission_blocked_body">The camera is turned off for this app. Open the app\'s settings, tap Permissions, and allow Camera.</string>
+    <string name="permission_open_settings">Open settings</string>
+
+    <!-- Camera picture -->
+    <string name="preview_desc">Camera picture. Tap to focus.</string>
+
+    <!-- Zoom. %1$s is the zoom with one decimal, for example 3.2. -->
+    <string name="zoom_label">%1$s×</string>
+    <string name="zoom_spoken">Zoom %1$s times</string>
+    <string name="zoom_slider_desc">Zoom</string>
+    <string name="zoom_in_desc">Zoom in</string>
+    <string name="zoom_out_desc">Zoom out</string>
+    <string name="zoom_unavailable">No zoom</string>
+
+    <!-- The LED light -->
+    <string name="light_button">Light</string>
+    <string name="light_desc">Light</string>
+    <string name="light_none">No light</string>
+    <string name="light_none_desc">Light not available: this phone\'s rear camera has no flash</string>
+    <string name="state_on">On</string>
+    <string name="state_off">Off</string>
+
+    <!-- When the camera can't start -->
+    <string name="error_no_camera">This phone has no rear camera, so the magnifier can\'t work.</string>
+    <string name="error_in_use">Another app is using the camera. Close it, then tap Try again.</string>
+    <string name="error_disabled">The camera is blocked on this phone right now. Tap Try again.</string>
+    <string name="error_dnd">Do Not Disturb is blocking the camera. Turn it off, then tap Try again.</string>
+    <string name="error_generic">The camera couldn\'t start. Tap Try again.</string>
+    <string name="error_try_again">Try again</string>
+</resources>
