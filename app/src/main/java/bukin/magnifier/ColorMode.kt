@@ -15,26 +15,39 @@ enum class ColorMode(
     @param:StringRes val label: Int,
     /** The name on the colour button. */
     @param:StringRes val shortLabel: Int,
+    /**
+     * True when more light on the page makes the screen darker (the inverting modes). The
+     * brightness slider then works the other way round on the camera, so "lighter" always makes
+     * the screen lighter (see [lightFor]).
+     */
+    val invertsLight: Boolean,
 ) {
     /** The camera's colours. */
-    NORMAL(R.string.colour_normal, R.string.colour_short_normal),
+    NORMAL(R.string.colour_normal, R.string.colour_short_normal, invertsLight = false),
 
     /** Grey, with the contrast doubled: dark text on white paper becomes black on white. */
-    HIGH_CONTRAST(R.string.colour_high_contrast, R.string.colour_short_high_contrast),
+    HIGH_CONTRAST(R.string.colour_high_contrast, R.string.colour_short_high_contrast, invertsLight = false),
 
     /** A colour negative: white paper turns black, black text white. */
-    INVERTED(R.string.colour_inverted, R.string.colour_short_inverted),
+    INVERTED(R.string.colour_inverted, R.string.colour_short_inverted, invertsLight = true),
 
     /** Yellow text on black: inverted grey with the contrast doubled, drawn in yellow. */
-    YELLOW_ON_BLACK(R.string.colour_yellow_on_black, R.string.colour_short_yellow_on_black);
+    YELLOW_ON_BLACK(R.string.colour_yellow_on_black, R.string.colour_short_yellow_on_black, invertsLight = true);
+
+    /**
+     * The light on the page (camera exposure live, [Brightness.gain] level frozen) for a
+     * brightness slider position, which always means the screen: + is a lighter screen in every
+     * mode. The same sign flip takes a camera value back to a slider position.
+     */
+    fun lightFor(screenLevel: Int): Int = if (invertsLight) -screenLevel else screenLevel
 
     /** The mode after this one, for the colour button: Normal follows the last. */
     fun next(): ColorMode = entries[(ordinal + 1) % entries.size]
 
     /**
      * The colour matrix for this mode, after a brightness [gain] on the camera's colours (1 =
-     * unchanged; see [Brightness]). The gain comes first, like more or less light on the page, so
-     * it works the same way as the camera's exposure on the live picture.
+     * unchanged; see [Brightness]). The gain comes first, like more or less light on the page, as
+     * the camera's exposure does live; [lightFor] picks the gain that makes the screen lighter.
      */
     fun matrix(gain: Float = 1f): FloatArray {
         val g = gain
@@ -116,8 +129,10 @@ enum class ColorMode(
 }
 
 /**
- * The brightness slider. Live, it moves the camera's exposure compensation (the camera takes in
- * more or less light; see [Exposure]). On a frozen picture it is a [gain] in the colour matrix.
+ * The brightness slider: + always makes the screen lighter. Live, it moves the camera's exposure
+ * compensation (see [Exposure]); frozen, it is a [gain] in the colour matrix. In the inverting
+ * colour modes both go the other way ([ColorMode.lightFor]): less light on the page is a lighter
+ * screen there.
  */
 object Brightness {
     /** The frozen picture's slider: -10..10, 0 = as the photo was taken. */
@@ -126,7 +141,7 @@ object Brightness {
     /** At either end of the frozen slider, the picture gets this many stops darker or lighter. */
     const val FROZEN_MAX_STOPS = 1.5f
 
-    /** The colour-matrix gain for a frozen [level]: each level is 0.15 of a stop. */
+    /** The colour-matrix gain for a frozen light [level]: each level is 0.15 of a stop. */
     fun gain(level: Int): Float {
         val clamped = level.coerceIn(-FROZEN_LEVELS, FROZEN_LEVELS)
         return 2f.pow(clamped * FROZEN_MAX_STOPS / FROZEN_LEVELS)
@@ -150,6 +165,13 @@ object Brightness {
 
         /** The slider position in steps from the middle, as spoken: "+3". */
         fun level(index: Int): Int = indexFor(index.toFloat()) / step
+
+        /** The camera's index for a slider position (a screen brightness) in [mode]. */
+        fun cameraIndex(sliderValue: Float, mode: ColorMode): Int =
+            indexFor(mode.lightFor(indexFor(sliderValue)).toFloat())
+
+        /** The slider position (a screen brightness) for the camera's [index] in [mode]. */
+        fun sliderValue(index: Int, mode: ColorMode): Float = valueFor(mode.lightFor(index))
 
         companion object {
             /**

@@ -181,7 +181,10 @@ class MainActivity : AppCompatActivity() {
     internal var exposure: Brightness.Exposure? = null
     private var updatingBrightness = false
 
-    /** The frozen picture's brightness, -10..10 ([Brightness.gain]); 0 at every freeze. */
+    /**
+     * The frozen picture's brightness slider, -10..10, + lighter on screen in every mode (the gain
+     * is [Brightness.gain] of [ColorMode.lightFor] it); 0 at every freeze.
+     */
     @VisibleForTesting
     internal var frozenLevel = 0
         private set
@@ -792,10 +795,13 @@ class MainActivity : AppCompatActivity() {
 
     @VisibleForTesting
     internal fun setColourMode(mode: ColorMode, announce: Boolean) {
+        val flips = mode.invertsLight != colourMode.invertsLight
         colourMode = mode
         settings.colourMode = mode
         applyPreviewFilter()
         applyFrozenFilter()
+        // The slider keeps its place (the screen's brightness); live, the camera follows it.
+        if (flips) applyLiveExposure()
         renderColour()
         // TalkBack hears the button's new state; sighted users see the name for a moment.
         if (announce) showMessage(getString(mode.label), forTalkBack = false)
@@ -816,7 +822,7 @@ class MainActivity : AppCompatActivity() {
 
     /** The colour mode with the frozen brightness: for the frozen picture and what is saved or shared. */
     @VisibleForTesting
-    internal fun pictureMatrix(): FloatArray = colourMode.matrix(Brightness.gain(frozenLevel))
+    internal fun pictureMatrix(): FloatArray = colourMode.matrix(Brightness.gain(colourMode.lightFor(frozenLevel)))
 
     private fun applyFrozenFilter() {
         val plain = colourMode == ColorMode.NORMAL && frozenLevel == 0
@@ -839,8 +845,7 @@ class MainActivity : AppCompatActivity() {
                 frozenLevel = value.roundToInt()
                 applyFrozenFilter()
             } else {
-                val range = exposure ?: return@addOnChangeListener
-                camera?.cameraControl?.setExposureCompensationIndex(range.indexFor(value))?.logFailure("exposure")
+                applyLiveExposure(value)
             }
             renderBrightnessButtons()
         }
@@ -867,6 +872,16 @@ class MainActivity : AppCompatActivity() {
             level < 0 -> resources.getQuantityString(R.plurals.brightness_darker, -level, -level)
             else -> getString(R.string.brightness_normal)
         }
+    }
+
+    /**
+     * The camera's exposure for the live slider's position: + is more light, except in the
+     * inverting colour modes, where less light makes the screen lighter.
+     */
+    private fun applyLiveExposure(sliderValue: Float = binding.brightnessSlider.value) {
+        val range = exposure ?: return
+        if (frozen) return
+        camera?.cameraControl?.setExposureCompensationIndex(range.cameraIndex(sliderValue, colourMode))?.logFailure("exposure")
     }
 
     /** The camera's exposure-compensation range, for the live slider. */
@@ -896,7 +911,7 @@ class MainActivity : AppCompatActivity() {
             brightnessSlider.isEnabled = true
         } else if (range != null) {
             val index = camera?.cameraInfo?.exposureState?.exposureCompensationIndex ?: 0
-            setBrightnessRange(range.from, range.to, range.step, range.valueFor(index))
+            setBrightnessRange(range.from, range.to, range.step, range.sliderValue(index, colourMode))
             brightnessSlider.isEnabled = true
         } else {
             setBrightnessRange(-Brightness.FROZEN_LEVELS, Brightness.FROZEN_LEVELS, 1, 0f)

@@ -221,7 +221,14 @@ class Step2ActivityTest {
         activity.view(R.id.brightnessUp).performClick()
         activity.view(R.id.brightnessUp).performClick()
         assertEquals(2, activity.frozenLevel)
-        assertArrayEquals(ColorMode.INVERTED.matrix(Brightness.gain(2)), activity.pictureMatrix(), 1e-6f)
+        // Inverted: "lighter" is less light on the page, so the inverted screen gets lighter.
+        assertArrayEquals(ColorMode.INVERTED.matrix(Brightness.gain(-2)), activity.pictureMatrix(), 1e-6f)
+        val paperOnScreen = Color.red(ColorMode.apply(activity.pictureMatrix(), Color.rgb(200, 200, 200)))
+        assertTrue("inverted paper at +2: $paperOnScreen", paperOnScreen > 55)
+        // In Normal the same slider position is more light.
+        activity.setColourMode(ColorMode.NORMAL, announce = false)
+        assertArrayEquals(ColorMode.NORMAL.matrix(Brightness.gain(2)), activity.pictureMatrix(), 1e-6f)
+        activity.setColourMode(ColorMode.INVERTED, announce = false)
         assertNotNull(activity.findViewById<FrozenView>(R.id.frozenView).pictureFilter)
         // Back to normal colours and level 0: no filter at all.
         activity.setColourMode(ColorMode.NORMAL, announce = false)

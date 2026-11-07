@@ -87,6 +87,54 @@ class ColorModeTest {
         assertEquals(black, ColorMode.YELLOW_ON_BLACK.on(grey(140), gain = Brightness.gain(5)))
     }
 
+    /** The screen's mean brightness over a page of greys (paper, ink and between). */
+    private fun screen(mode: ColorMode, sliderLevel: Int): Double {
+        val matrix = mode.matrix(Brightness.gain(mode.lightFor(sliderLevel)))
+        val page = listOf(20, 60, 100, 140, 180, 220)
+        return page.map { v -> channels(ColorMode.apply(matrix, grey(v))).drop(1).average() }.average()
+    }
+
+    @Test
+    fun lighterAlwaysMakesTheScreenLighterAndDarkerDarker() {
+        for (mode in ColorMode.entries) {
+            val levels = (-10..10 step 5).map { screen(mode, it) }
+            for (i in 1 until levels.size) {
+                assertTrue("$mode: slider ${-10 + 5 * i} should be lighter than ${-10 + 5 * (i - 1)} (${levels[i]} vs ${levels[i - 1]})", levels[i] > levels[i - 1])
+            }
+        }
+    }
+
+    @Test
+    fun theInvertingModesTurnTheLightTheOtherWay() {
+        assertEquals(listOf(false, false, true, true), ColorMode.entries.map { it.invertsLight })
+        assertEquals(3, ColorMode.NORMAL.lightFor(3))
+        assertEquals(3, ColorMode.HIGH_CONTRAST.lightFor(3))
+        assertEquals(-3, ColorMode.INVERTED.lightFor(3))
+        assertEquals(4, ColorMode.YELLOW_ON_BLACK.lightFor(-4))
+        // Inverted paper (200): "lighter" by 5 levels shows it lighter than 55, not darker.
+        val lighter = ColorMode.INVERTED.matrix(Brightness.gain(ColorMode.INVERTED.lightFor(5)))
+        assertTrue(channels(ColorMode.apply(lighter, paper))[1] > 55)
+    }
+
+    @Test
+    fun liveLighterLowersTheExposureInTheInvertingModes() {
+        val a20 = Brightness.Exposure.of(-20, 20)!!
+        // Slider 3 steps lighter (+6 on the A20's grid).
+        assertEquals(6, a20.cameraIndex(6f, ColorMode.NORMAL))
+        assertEquals(6, a20.cameraIndex(6f, ColorMode.HIGH_CONTRAST))
+        assertEquals(-6, a20.cameraIndex(6f, ColorMode.INVERTED))
+        assertEquals(6, a20.cameraIndex(-6f, ColorMode.YELLOW_ON_BLACK))
+        // And back: the camera at -6 in Inverted is the slider at +6.
+        assertEquals(6f, a20.sliderValue(-6, ColorMode.INVERTED), 0f)
+        assertEquals(-6f, a20.sliderValue(-6, ColorMode.NORMAL), 0f)
+        // A lopsided range keeps the camera inside it.
+        val lopsided = Brightness.Exposure.of(-9, 12)!!
+        assertEquals(-9, lopsided.cameraIndex(12f, ColorMode.INVERTED))
+        for (mode in ColorMode.entries) {
+            for (v in -6..6 step 2) assertEquals(v.toFloat(), a20.sliderValue(a20.cameraIndex(v.toFloat(), mode), mode), 0f)
+        }
+    }
+
     @Test
     fun theButtonCyclesThroughAllFourAndBack() {
         var mode = ColorMode.NORMAL
