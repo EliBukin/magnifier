@@ -1,6 +1,7 @@
 package bukin.magnifier
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -144,6 +145,9 @@ class MainActivity : AppCompatActivity() {
 
     // ---- Camera --------------------------------------------------------------------------------
 
+    // FEATURE_CAMERA is the rear camera, which is exactly what the magnifier needs (lint suggests
+    // FEATURE_CAMERA_ANY for ChromeOS, which would also accept a front-only device).
+    @SuppressLint("UnsupportedChromeOsCameraSystemFeature")
     private fun startCamera() {
         if (!cameraStartEnabled) return
         if (camera != null || cameraStarting || problem == CameraProblem.NO_REAR_CAMERA) return
@@ -155,8 +159,11 @@ class MainActivity : AppCompatActivity() {
             val provider = try {
                 future.get()
             } catch (e: Exception) {
+                // CameraX is limited to the rear camera (MagnifierApp), so a phone without one
+                // fails here rather than at bindCamera.
                 debugLog("CameraX failed to start", e)
-                showProblem(CameraProblem.OTHER)
+                val hasRear = packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA)
+                showProblem(if (hasRear) CameraProblem.OTHER else CameraProblem.NO_REAR_CAMERA)
                 return@addListener
             }
             cameraProvider = provider
@@ -398,7 +405,7 @@ class MainActivity : AppCompatActivity() {
         val action = FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE)
             .setAutoCancelDuration(FOCUS_RESET_SECONDS, TimeUnit.SECONDS)
             .build()
-        binding.focusRing.show(x, y)
+        val tap = binding.focusRing.show(x, y)
         val result = cam.cameraControl.startFocusAndMetering(action)
         result.addListener({
             val focused = try {
@@ -408,7 +415,7 @@ class MainActivity : AppCompatActivity() {
                 false
             }
             debugLog("tap to focus at (${x.toInt()}, ${y.toInt()}): focused=$focused")
-            binding.focusRing.showResult(focused)
+            binding.focusRing.showResult(tap, focused)
         }, ContextCompat.getMainExecutor(this))
     }
 

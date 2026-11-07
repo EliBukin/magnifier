@@ -10,7 +10,7 @@ import android.view.View
 
 /**
  * A short ring where the user tapped to focus: it shrinks into place, turns yellow when the
- * camera reports focus, and fades out. Purely visual; hidden from TalkBack.
+ * camera reports focus, and fades out half a second later. Purely visual; hidden from TalkBack.
  */
 class FocusRingView @JvmOverloads constructor(
     context: Context,
@@ -39,31 +39,54 @@ class FocusRingView @JvmOverloads constructor(
         alpha = 0f
     }
 
-    /** Shows the ring at ([x], [y]) in this view's coordinates. */
-    fun show(x: Float, y: Float) {
+    private var currentTap = 0
+
+    /**
+     * Shows the ring at ([x], [y]) in this view's coordinates, until [showResult] (or a timeout).
+     * Returns this tap's number, for [showResult].
+     */
+    fun show(x: Float, y: Float): Int {
+        currentTap++
         centerX = x
         centerY = y
         shown = true
         ring.color = Color.WHITE
         shrink?.cancel()
         animate().cancel()
+        removeCallbacks(fadeOut)
         alpha = 1f
         shrink = ValueAnimator.ofFloat(1.3f, 1f).apply {
             duration = SHRINK_MS
             addUpdateListener { scaleRing(it.animatedValue as Float) }
             start()
         }
-        animate().setStartDelay(SHRINK_MS + HOLD_MS).setDuration(FADE_MS).alpha(0f)
-            .withEndAction { shown = false }
+        // Slow cameras may never answer; don't leave the ring up.
+        postDelayed(fadeOut, NO_RESULT_TIMEOUT_MS)
+        return currentTap
     }
 
     private var shrink: ValueAnimator? = null
 
-    /** Colours the ring by the camera's focus result. */
-    fun showResult(focused: Boolean) {
-        if (!shown) return
+    private val fadeOut = Runnable {
+        animate().setDuration(FADE_MS).alpha(0f).withEndAction { shown = false }
+    }
+
+    /**
+     * Colours the ring by the camera's focus result for tap [tap], holds it briefly, then fades it.
+     * A late result for an earlier tap is ignored.
+     */
+    fun showResult(tap: Int, focused: Boolean) {
+        if (!shown || tap != currentTap) return
         ring.color = if (focused) FOCUSED_COLOR else Color.WHITE
         invalidate()
+        removeCallbacks(fadeOut)
+        postDelayed(fadeOut, HOLD_AFTER_RESULT_MS)
+    }
+
+    override fun onDetachedFromWindow() {
+        removeCallbacks(fadeOut)
+        shrink?.cancel()
+        super.onDetachedFromWindow()
     }
 
     private var currentScale = 1f
@@ -83,7 +106,8 @@ class FocusRingView @JvmOverloads constructor(
 
     private companion object {
         const val SHRINK_MS = 200L
-        const val HOLD_MS = 700L
+        const val HOLD_AFTER_RESULT_MS = 500L
+        const val NO_RESULT_TIMEOUT_MS = 3000L
         const val FADE_MS = 300L
         const val FOCUSED_COLOR = 0xFFFFD54F.toInt()
     }
