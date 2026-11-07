@@ -19,10 +19,12 @@
         <item name="android:minHeight">@dimen/side_button</item>
         <item name="android:insetTop">0dp</item>
         <item name="android:insetBottom">0dp</item>
-        <item name="android:paddingStart">3dp</item>
-        <item name="android:paddingEnd">3dp</item>
-        <item name="android:paddingTop">7dp</item>
-        <item name="android:paddingBottom">5dp</item>
+        <!-- The word sits where the circle is still wide, and the side padding keeps it inside
+             the round outline (autosize shrinks long words like "Contrast" or "אוטומטי"). -->
+        <item name="android:paddingStart">7dp</item>
+        <item name="android:paddingEnd">7dp</item>
+        <item name="android:paddingTop">5dp</item>
+        <item name="android:paddingBottom">8dp</item>
         <item name="android:maxLines">1</item>
         <item name="android:textSize">13sp</item>
         <item name="autoSizeTextType">uniform</item>
