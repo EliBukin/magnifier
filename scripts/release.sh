@@ -6,6 +6,8 @@
 #       Exports exactly <revision> (a commit) into a fresh temporary directory, runs every release
 #       gate there, and keeps the verified, still unsigned bundle with its R8 mapping, reports and
 #       a build record in dist/<package>-<version>-vc<code>-<commit>/ (never overwritten).
+#       Refuses first unless that commit's docs/play/release-docs-checklist.md is complete for
+#       this exact version.
 #
 #   scripts/release.sh sign <release-dir> <upload-keystore> <key-alias>
 #       Re-checks that release directory against its build record and signs its bundle with the
@@ -37,12 +39,29 @@ ALLOWED_PERMISSIONS=(
 # the release, or that call would fail on Android 12 and older.
 RECEIVER_PERMISSION_STRING=DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 
+# Owner rule (2026-11-07): nothing is uploaded until the store listing, screenshots, release notes,
+# Data safety, website, privacy policy, in-app help and README all match the build. The checklist
+# file, committed with the release, must name the build's exact versionCode and versionName and
+# have every one of these items ticked ("- [x] <key>: ..."). See docs/RELEASING.md.
+RELEASE_DOCS_CHECKLIST=docs/play/release-docs-checklist.md
+RELEASE_DOCS_ITEMS=(
+  screenshots-en
+  screenshots-he
+  short-description
+  full-description
+  release-notes
+  data-safety
+  website-privacy
+  in-app-help
+  readme
+)
+
 fail() {
   echo "error: $*" >&2
   exit 1
 }
 usage() {
-  sed -n '5,12p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '5,14p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 sha256() { sha256sum "$1" | cut -d' ' -f1; }
@@ -159,6 +178,50 @@ placeholders_in() {
   if grep -aq '\[\[PLACEHOLDER' "$tmp/resources.pb"; then echo yes; else echo no; fi
 }
 
+# The value of a "versionCode: 1" style line in the checklist $1, trimmed, or nothing.
+checklist_value() { tr -d '\r' <"$1" | sed -nE "s/^$2:[[:space:]]*(.*[^[:space:]])[[:space:]]*$/\1/p" | sed -n 1p; }
+
+# Fails unless the release docs checklist $1 (a copy taken from commit $2) is complete for
+# versionCode $3 and versionName $4. Either version may be empty: then only the items are checked
+# (build checks the versions again once the bundle says what they are). Lists every problem.
+check_release_docs() {
+  local file=$1 commit=$2 code=$3 name=$4 problems="" listed_code listed_name key lines count
+  [ -s "$file" ] || fail "$RELEASE_DOCS_CHECKLIST is missing from commit ${commit:0:12}.
+  Owner rule: no upload until the docs and screenshots match the build. Fill in the checklist
+  (see docs/RELEASING.md, \"Docs + screenshots match this build\"), commit it, and build that commit."
+  listed_code=$(checklist_value "$file" versionCode)
+  listed_name=$(checklist_value "$file" versionName)
+  [ -n "$listed_code" ] || problems="$problems
+  no \"versionCode: <n>\" line"
+  [ -n "$listed_name" ] || problems="$problems
+  no \"versionName: <name>\" line"
+  if [ -n "$code" ] && [ -n "$listed_code" ] && [ "$listed_code" != "$code" ]; then
+    problems="$problems
+  it is for versionCode $listed_code, but this build is versionCode $code"
+  fi
+  if [ -n "$name" ] && [ -n "$listed_name" ] && [ "$listed_name" != "$name" ]; then
+    problems="$problems
+  it is for versionName $listed_name, but this build is versionName $name"
+  fi
+  for key in "${RELEASE_DOCS_ITEMS[@]}"; do
+    lines=$(grep -E "^[-*][[:space:]]+\[[ xX]\][[:space:]]+$key:" "$file" || true)
+    count=$(grep -c . <<<"$lines" || true)
+    if [ "$count" -eq 0 ]; then
+      problems="$problems
+  missing item: $key"
+    elif [ "$count" -gt 1 ]; then
+      problems="$problems
+  item listed $count times: $key"
+    elif ! grep -qE "^[-*][[:space:]]+\[[xX]\]" <<<"$lines"; then
+      problems="$problems
+  not ticked: $(sed -E 's/^[-*][[:space:]]+\[ \][[:space:]]+//' <<<"$lines")"
+    fi
+  done
+  [ -z "$problems" ] || fail "the release docs checklist ($RELEASE_DOCS_CHECKLIST at ${commit:0:12}) isn't complete for this build:$problems
+  Owner rule: no upload until the docs and screenshots match the build. Do the missing items,
+  update the checklist, commit it, and build that commit."
+}
+
 # "N tests, F failures, E errors, S skipped" over a directory of JUnit XML results; fails if any
 # test failed or none ran.
 test_summary() {
@@ -203,6 +266,16 @@ cmd_build() {
   # Exactly the committed tree: nothing from the working tree, untracked files or earlier builds.
   git -C "$repo" archive --format=tar "$commit" | tar -xf - -C "$src"
 
+  # The docs checklist first: it takes a second, the build takes minutes. The versions come from
+  # app/build.gradle.kts here (when written as plain literals) and from the bundle after the build.
+  local planned_code planned_name
+  planned_code=$(sed -nE 's/^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' "$src/app/build.gradle.kts" | sed -n 1p)
+  planned_name=$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)"[[:space:]]*$/\1/p' "$src/app/build.gradle.kts" | sed -n 1p)
+  if ! (check_release_docs "$src/$RELEASE_DOCS_CHECKLIST" "$commit" "$planned_code" "$planned_name"); then
+    rm -rf "$work"
+    exit 1
+  fi
+
   echo "Building $commit in $src"
   echo "Gates: ./gradlew --no-daemon --continue ${GATES[*]} (a few minutes; log: $log)"
   status=0
@@ -218,6 +291,7 @@ cmd_build() {
   [ -f "$mapping" ] || fail "the build produced no R8 mapping; the release build must be minified"
   check_embedded_mapping "$bundle" "$mapping" "$work"
   read_bundle_manifest "$bundle" "$work"
+  check_release_docs "$src/$RELEASE_DOCS_CHECKLIST" "$commit" "$version_code" "$version_name"
   local permissions
   permissions=$(check_permissions "$work/manifest/base-proto.apk")
   check_no_receiver_permission_code "$bundle" "$work"
@@ -271,6 +345,7 @@ cmd_build() {
     echo "mapping.txt SHA-256:     $(sha256 "$out_dir/mapping.txt")"
     echo "mapping source:          embedded in the bundle, identical to the build's mapping.txt"
     echo "owner placeholders:      $placeholders"
+    echo "release docs checklist:  complete for versionCode $version_code / versionName $version_name ($RELEASE_DOCS_CHECKLIST)"
   } > "$out_dir/build-record.txt"
   chmod a-w "$out_dir"/*
   rm -rf "$work"
@@ -319,6 +394,9 @@ cmd_sign() {
   read_bundle_manifest "$bundle" "$work"
   # The same permission gate as build, in case the allowlist was loosened since.
   check_permissions "$work/manifest/base-proto.apk" >/dev/null
+  # And the docs checklist, as committed with the recorded commit.
+  git -C "$repo" show "$commit:$RELEASE_DOCS_CHECKLIST" > "$work/release-docs-checklist.md" 2>/dev/null || true
+  check_release_docs "$work/release-docs-checklist.md" "$commit" "$version_code" "$version_name"
 
   [ -f "$keystore" ] || fail "keystore not found: $keystore"
   keystore_abs=$(realpath "$keystore")

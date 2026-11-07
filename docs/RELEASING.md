@@ -103,6 +103,47 @@ merged manifest of a release build by hand with:
 grep -E 'uses-permission|<permission' app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml
 ```
 
+## Docs + screenshots match this build
+
+Owner rule (2026-11-07), for every app: "when a version is uploaded ALL THE
+DOCUMENT MUST BE UPDATED". Play must never show screenshots or text from an
+older version. So before **any** upload to **any** Play track (internal,
+closed, open or production), and before the owner is asked to sign, all of
+these must match the exact build being released:
+
+| Item (key in the checklist) | What "matches this build" means |
+|---|---|
+| `screenshots-en` | Play screenshots in English, taken fresh from this build |
+| `screenshots-he` | Play screenshots in Hebrew, taken fresh from this build |
+| `short-description` | The Play short description, English and Hebrew |
+| `full-description` | The Play full description, English and Hebrew |
+| `release-notes` | The release notes ("What's new") for this version, English and Hebrew |
+| `data-safety` | Play's Data safety form: this build's permissions and data use |
+| `website-privacy` | The gh-pages site and the privacy policy |
+| `in-app-help` | The in-app help / About text |
+| `readme` | `README.md` |
+
+How it's enforced:
+
+- **The checklist.** `docs/play/release-docs-checklist.md` names a
+  `versionCode` and `versionName` and has one line per item above,
+  `- [ ] <key>: …`. For each new version: set the two version lines to the
+  values in `app/build.gradle.kts`, untick everything, do each item for this
+  build and tick it (`[x]`), then commit.
+- **`scripts/release.sh build`** reads the checklist from the commit it builds,
+  so uncommitted edits don't count. It refuses before the Gradle build starts,
+  and again after it against the bundle's own version, unless:
+  - the file is there;
+  - its `versionCode` and `versionName` are this build's;
+  - every item is listed exactly once and ticked.
+
+  The error names each problem: the version that doesn't match, each item that
+  is missing or not ticked. The build record notes the checklist was complete.
+- **`scripts/release.sh sign`** checks the checklist at the recorded commit
+  again.
+- **New item?** Add its key to `RELEASE_DOCS_ITEMS` in `scripts/release.sh`, a
+  line to the checklist, and a row to the table above.
+
 ## Version codes
 
 - `versionCode` (in `app/build.gradle.kts`) must increase with **every** upload
@@ -121,7 +162,11 @@ A release goes through `scripts/release.sh`. It never signs a bundle it didn't
 build and verify itself. It needs `JAVA_HOME` (JDK 21) and `ANDROID_HOME` (the
 SDK) set.
 
-1. **Build and verify one commit.** Name the commit (or a branch or tag that
+1. **Docs + screenshots first.** Do everything in "Docs + screenshots match this
+   build" above for this version, and commit the completed checklist. Without
+   it, `build` refuses.
+
+2. **Build and verify one commit.** Name the commit (or a branch or tag that
    points at it) explicitly:
 
    ```bash
@@ -131,6 +176,8 @@ SDK) set.
    - **Isolated checkout.** It exports exactly that commit (`git archive`) into
      a fresh temporary directory, so uncommitted edits, untracked files and
      earlier build outputs can't reach the release.
+   - **Docs checklist.** It checks that commit's
+     `docs/play/release-docs-checklist.md` before building (above).
    - **Gates.** It runs them all in that directory:
      `./gradlew --no-daemon --continue clean check lintRelease bundleRelease`
      (unit tests for debug and release, lint, the minified release bundle).
@@ -150,10 +197,10 @@ SDK) set.
      - `build-record.txt`: the full commit and its tree, toolchain versions
        (Gradle, Android Gradle plugin, Kotlin, JDK, aapt2), test and lint
        results, package and version, the permissions, SHA-256 of the bundle
-       and the mapping, and whether owner placeholders are still in the
-       bundle.
+       and the mapping, whether owner placeholders are still in the
+       bundle, and that the docs checklist was complete.
 
-2. **Sign that release directory.** `jarsigner` asks for the keystore
+3. **Sign that release directory.** `jarsigner` asks for the keystore
    password, and the key password if it's different, at the prompt:
 
    ```bash
@@ -169,6 +216,8 @@ SDK) set.
    - the bundle isn't already signed;
    - no `[[PLACEHOLDER: …]]` owner details are left;
    - the permissions are still all in the allowlist;
+   - the docs checklist at the recorded commit is still complete for this
+     version;
    - the keystore lives outside the repository.
 
    It then signs, verifies the signature, checks the signed bundle still embeds
@@ -176,12 +225,13 @@ SDK) set.
    SHA-256 fingerprint and the signed bundle's SHA-256. A directory is never
    signed twice.
 
-3. Before uploading, check that the fingerprint `sign` prints matches the upload
+4. Before uploading, check that the fingerprint `sign` prints matches the upload
    key certificate on Play Console's **App signing** page. That's after the
    first upload: for the first upload, Play records whichever upload key you
    use.
 
-4. Upload `dist/<release>/…-upload-signed.aab` in Play Console.
+5. Upload `dist/<release>/…-upload-signed.aab` in Play Console, with the
+   release notes, listing text and screenshots from the checklist.
 
 ## Keep a release record for every upload
 
