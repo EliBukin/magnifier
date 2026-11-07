@@ -141,12 +141,12 @@ class ZoomMathTest {
 
     @Test
     fun theFrozenPicturesStepsChangeTheNumberToo() {
-        // Frozen zoom shown = the camera's zoom x the frozen scale; each step is about 1.15x.
+        // Frozen zoom shown = the camera's zoom x the frozen scale; each step is about 1.11x.
         for (cameraZoom in listOf(1f, 1.04f, 2.5f, 4f)) {
-            var scale = 0.62f
+            var scale = FrozenZoom.LOW
             var label = ZoomMath.formatRatio(cameraZoom * scale, Locale.US)
             while (scale < FrozenZoom.HIGH) {
-                scale = FrozenZoom.step(scale, 1, 0.62f, FrozenZoom.HIGH)
+                scale = FrozenZoom.step(scale, 1)
                 val next = ZoomMath.formatRatio(cameraZoom * scale, Locale.US)
                 assertTrue("camera $cameraZoom: frozen step to $scale still shows $label", next != label)
                 label = next

@@ -83,7 +83,7 @@
 
     <!-- Freeze -->
     <string name="freeze_button">הקפאה</string>
-    <string name="live_button">חי</string>
+    <string name="live_button">מצלמה</string>
     <string name="freeze_action">הקפאת התמונה</string>
     <string name="live_action">חזרה לתמונה החיה</string>
     <string name="frozen_state">התמונה מוקפאת</string>

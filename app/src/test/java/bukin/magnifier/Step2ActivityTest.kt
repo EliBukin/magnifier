@@ -138,12 +138,17 @@ class Step2ActivityTest {
         val activity = launch().get()
         activity.freezeForTest(paper())
         val frozen = activity.findViewById<FrozenView>(R.id.frozenView)
+        val slider = activity.findViewById<Slider>(R.id.zoomSlider)
+        // The first frozen view: the slider at its left end, like the widest live view, and the
+        // label the zoom it was frozen at.
         assertEquals("1.00×", activity.text(R.id.tabZoom))
+        assertEquals(0f, slider.value, 1e-3f)
+        assertFalse(activity.view(R.id.zoomOut).isEnabled)
         activity.view(R.id.zoomIn).performClick()
-        assertEquals(1.149f, frozen.scale, 1e-3f)
-        assertEquals("1.15×", activity.text(R.id.tabZoom))
-        assertEquals("Zoom 1.15 times", activity.view(R.id.tabZoom).contentDescription)
-        assertEquals(30f, activity.findViewById<Slider>(R.id.zoomSlider).value, 1e-2f)
+        assertEquals(1.110f, frozen.scale, 1e-3f)
+        assertEquals("1.11×", activity.text(R.id.tabZoom))
+        assertEquals("Zoom 1.11 times", activity.view(R.id.tabZoom).contentDescription)
+        assertEquals(5f, slider.value, 1e-2f)
         // The volume keys, taken even at the top.
         val up = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP)
         val labels = mutableListOf(activity.text(R.id.tabZoom))
@@ -153,15 +158,17 @@ class Step2ActivityTest {
         }
         assertEquals(8f, frozen.scale, 1e-3f)
         assertEquals("8.0×", labels.last())
+        assertEquals(100f, slider.value, 1e-2f)
         // Every press up to the top changed the number.
         val climb = labels.takeWhile { it != "8.0×" } + "8.0×"
         assertEquals(climb.distinct(), climb)
         assertFalse(activity.view(R.id.zoomIn).isEnabled)
-        // The slider zooms it too.
-        activity.findViewById<Slider>(R.id.zoomSlider).value = 25f
-        assertEquals(1f, frozen.scale, 1e-3f)
+        // The slider zooms it too, and the label follows: a third of the way is 2x.
+        slider.value = 100f / 3f
+        assertEquals(2f, frozen.scale, 1e-3f)
+        assertEquals("2.0×", activity.text(R.id.tabZoom))
         activity.view(R.id.zoomOut).performClick()
-        assertEquals("0.87×", activity.text(R.id.tabZoom))
+        assertEquals("1.87×", activity.text(R.id.tabZoom))
     }
 
     @Test

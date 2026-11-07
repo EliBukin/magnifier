@@ -13,11 +13,12 @@ class FrozenMathTest {
     private val eps = 1e-3f
 
     @Test
-    fun theSliderIsLogarithmicFromHalfToEight() {
-        assertEquals(0.5f, FrozenZoom.sliderToScale(0f), eps)
+    fun theSliderStartsAtTheFrozenViewAndIsLogarithmicToEight() {
+        // Slider 0 is the picture as it was frozen, like live where the left end is the widest view.
+        assertEquals(1f, FrozenZoom.sliderToScale(0f), eps)
+        assertEquals(0f, FrozenZoom.scaleToSlider(1f), eps)
         assertEquals(8f, FrozenZoom.sliderToScale(100f), eps)
-        // Scale 1 (the live view's) is a quarter of the way along.
-        assertEquals(25f, FrozenZoom.scaleToSlider(1f), eps)
+        assertEquals(2f, FrozenZoom.sliderToScale(100f / 3f), eps)
         for (v in 0..100 step 5) {
             assertEquals(v.toFloat(), FrozenZoom.scaleToSlider(FrozenZoom.sliderToScale(v.toFloat())), 1e-2f)
         }
@@ -25,42 +26,31 @@ class FrozenMathTest {
 
     @Test
     fun everyStepZoomsByTheSameFactor() {
-        val factor = 16f.pow(0.05f) // about 1.149
+        val factor = 8f.pow(0.05f) // about 1.11
         var scale = 1f
         repeat(10) {
-            val next = FrozenZoom.step(scale, 1, 0.5f, 8f)
+            val next = FrozenZoom.step(scale, 1)
             assertEquals(factor, next / scale, 1e-3f)
             scale = next
         }
-        assertEquals(scale / factor, FrozenZoom.step(scale, -1, 0.5f, 8f), 1e-3f)
+        assertEquals(scale / factor, FrozenZoom.step(scale, -1), 1e-3f)
     }
 
     @Test
     fun stepsStopAtTheLimits() {
-        assertEquals(8f, FrozenZoom.step(7.9f, 3, 0.62f, 8f), eps)
-        // A photo that fits at 0.62 can't go to 0.5.
-        assertEquals(0.62f, FrozenZoom.step(0.66f, -3, 0.62f, 8f), eps)
+        assertEquals(8f, FrozenZoom.step(7.9f, 3), eps)
+        // Never wider than the frozen view.
+        assertEquals(1f, FrozenZoom.step(1f, -1), eps)
+        assertEquals(1f, FrozenZoom.step(1.05f, -3), eps)
         // From between grid points, the first step lands on the next one.
-        assertEquals(FrozenZoom.sliderToScale(10f), FrozenZoom.step(0.62f, 1, 0.62f, 8f), eps)
+        assertEquals(FrozenZoom.sliderToScale(5f), FrozenZoom.step(1.05f, 1), eps)
     }
 
     @Test
     fun doubleTapDoublesAndAtTheTopGoesBack() {
-        assertEquals(2f, FrozenZoom.doubleTapTarget(1f, 0.6f, 8f), eps)
-        assertEquals(8f, FrozenZoom.doubleTapTarget(5f, 0.6f, 8f), eps)
-        assertEquals(1f, FrozenZoom.doubleTapTarget(8f, 0.6f, 8f), eps)
-        assertEquals(1.2f, FrozenZoom.doubleTapTarget(0.6f, 0.6f, 8f), eps)
-    }
-
-    @Test
-    fun zoomingOutStopsWhenTheWholePhotoIsInView() {
-        // The A20: a 3096 x 4128 photo shown 1905 px wide on a 720 x 1560 screen -> 1171 x 1560 at
-        // scale 1; all of it shows at 720 / 1171 = 0.615.
-        assertEquals(0.615f, FrozenZoom.minScale(1171f, 1560f, 720f, 1560f), 1e-3f)
-        // The screen's own picture: no zooming out.
-        assertEquals(1f, FrozenZoom.minScale(720f, 1560f, 720f, 1560f), eps)
-        // A very wide photo: never below 0.5.
-        assertEquals(0.5f, FrozenZoom.minScale(5000f, 1560f, 720f, 1560f), eps)
+        assertEquals(2f, FrozenZoom.doubleTapTarget(1f), eps)
+        assertEquals(8f, FrozenZoom.doubleTapTarget(5f), eps)
+        assertEquals(1f, FrozenZoom.doubleTapTarget(8f), eps)
     }
 
     @Test

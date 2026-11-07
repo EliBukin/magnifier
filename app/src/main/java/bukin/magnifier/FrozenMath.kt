@@ -8,12 +8,14 @@ import kotlin.math.pow
 /**
  * Zoom on the frozen picture. The scale is relative to how the picture first shows, which is
  * how the live view looked (1 = no jump). The zoom slider runs on a log scale from [LOW]
- * (slider 0) to [HIGH] (slider 100), so every slider step or button press zooms by the same
- * factor (about 1.15x). [LOW] lets the photo's edges, which were off screen, come into view.
+ * (slider 0: the picture as it was frozen) to [HIGH] (slider 100), so every slider step or button
+ * press zooms by the same factor (about 1.11x). As live, the slider's left end is the widest view,
+ * and the zoom shown is the camera's zoom times this scale: they always agree. The photo's sides,
+ * which were off screen, are reached by dragging.
  */
 object FrozenZoom {
     const val SLIDER_MAX = 100f
-    const val LOW = 0.5f
+    const val LOW = 1f
     const val HIGH = 8f
 
     fun sliderToScale(value: Float): Float =
@@ -23,21 +25,14 @@ object FrozenZoom {
         (SLIDER_MAX * ln(scale.coerceIn(LOW, HIGH) / LOW) / ln(HIGH / LOW)).coerceIn(0f, SLIDER_MAX)
 
     /** The scale [steps] slider steps (1/20 of the slider each) from [scale], within [min]..[max]. */
-    fun step(scale: Float, steps: Int, min: Float, max: Float): Float {
+    fun step(scale: Float, steps: Int, min: Float = LOW, max: Float = HIGH): Float {
         val linear = ZoomMath.stepLinear(scaleToSlider(scale) / SLIDER_MAX, steps)
         return sliderToScale(linear * SLIDER_MAX).coerceIn(min, max)
     }
 
     /** A double tap zooms in 2x; at the maximum it goes back to the start (1). */
-    fun doubleTapTarget(scale: Float, min: Float, max: Float): Float =
+    fun doubleTapTarget(scale: Float, min: Float = LOW, max: Float = HIGH): Float =
         if (scale >= max * 0.99f) 1f.coerceIn(min, max) else (scale * 2f).coerceIn(min, max)
-
-    /** The smallest scale for a picture whose first view covers [contentW] x [contentH] of a view [viewW] x [viewH]: all of it in view, but not below [LOW]. */
-    fun minScale(contentW: Float, contentH: Float, viewW: Float, viewH: Float): Float {
-        if (contentW <= 0f || contentH <= 0f) return 1f
-        val fit = minOf(viewW / contentW, viewH / contentH)
-        return fit.coerceIn(LOW, 1f)
-    }
 }
 
 /**

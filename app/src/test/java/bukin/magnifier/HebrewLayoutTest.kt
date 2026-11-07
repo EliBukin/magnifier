@@ -100,7 +100,7 @@ class HebrewLayoutTest {
         relayout(activity)
         fun v(id: Int) = activity.findViewById<View>(id)
         assertTrue(v(R.id.shareButton).left < v(R.id.freezeButton).left && v(R.id.freezeButton).left < v(R.id.saveButton).left)
-        assertEquals("חי", activity.findViewById<TextView>(R.id.freezeButton).text.toString())
+        assertEquals("מצלמה", activity.findViewById<TextView>(R.id.freezeButton).text.toString())
         assertEquals("שמירה", activity.findViewById<TextView>(R.id.saveButton).text.toString())
         assertEquals("שיתוף התמונה כולה", v(R.id.shareButton).contentDescription)
         assertEquals("צהוב", activity.findViewById<TextView>(R.id.colourButton).text.toString())

@@ -944,7 +944,7 @@ class MainActivity : AppCompatActivity() {
         val shownMs = SystemClock.elapsedRealtime() - freezeStartMs
         if (shot != null) {
             placeholder = shot
-            showWholeBitmap(shot, lowestScale = 1f)
+            showWholeBitmap(shot, lowestScale = FrozenZoom.LOW)
             // With no photo coming, the screen's picture is the frozen picture.
             if (imageCapture == null) frozenPicture = Picture(shot, 0)
         } else if (imageCapture == null) {
@@ -1051,10 +1051,8 @@ class MainActivity : AppCompatActivity() {
         val transform = PhotoDecode.baseTransform(
             bitmap.width.toFloat(), bitmap.height.toFloat(), picture.rotation, crop, view.width.toFloat(), view.height.toFloat(),
         )
-        val content = transform.mapBox(bitmap.width.toFloat(), bitmap.height.toFloat())
-        val lowest = FrozenZoom.minScale(content.width, content.height, view.width.toFloat(), view.height.toFloat())
         val old = placeholder
-        view.show(bitmap, transform, lowest, keepView = old != null)
+        view.show(bitmap, transform, FrozenZoom.LOW, keepView = old != null)
         placeholder = null
         frozenPicture = picture
         old?.let { recycleLater(it) }
