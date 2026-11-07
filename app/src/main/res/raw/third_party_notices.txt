@@ -1,4 +1,4 @@
-Bukin Magnifier includes the open-source software below. Keep this list in step with THIRD_PARTY_NOTICES.md.
+Bukin Magnifier includes the open-source software below.
 
 LICENSED UNDER THE APACHE LICENSE, VERSION 2.0 (full text at the end)
 

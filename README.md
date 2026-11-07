@@ -53,6 +53,38 @@ phone unless you share a picture yourself.
   40% of a 720 x 1560 screen. TalkBack labels and states on every control.
   English and Hebrew (right to left).
 
+- **About and privacy:** the round "i" button in the top end corner (top right;
+  top left in Hebrew), on every screen including the camera permission one. It
+  opens a page with the version, "No internet: nothing leaves your phone", and
+  three big buttons: the privacy policy (in your browser), an email to the
+  developer (in your email app, subject "Bukin Magnifier") and the open-source
+  licences. Back, or the arrow at the top, returns to the camera.
+
+## Privacy
+
+No internet permission, no ads, no analytics, no accounts. The camera picture is
+used only on the phone. A picture is saved only when you tap Save (into
+`Pictures/Bukin Magnifier`) and shared only when you tap Share, with the app you
+pick. Android's own backup may copy the three remembered settings.
+
+- Privacy policy: https://elibukin.github.io/magnifier/privacy-policy.html
+  (English and Hebrew; source `docs/privacy-policy.md` and `.he.md`)
+- Website: https://elibukin.github.io/magnifier/ (source `docs/site/`)
+- Contact: dev.mechanics998877@gmail.com
+
+The site is the `gh-pages` branch, built with
+`python3 scripts/render-site.py <gh-pages checkout>` and checked with
+`python3 scripts/test-site.py` (the pages, and that the policy's facts still
+hold in the manifest and the code).
+
+## Play store
+
+`docs/play/`: the store listing in English and Hebrew (`store-listing.md`,
+checked by `python3 scripts/check-listing.py`), Data safety, release notes,
+content-rating notes, the owner's Play Console checklist, and the graphics
+(`assets/`; `python3 scripts/store-shots.py` composes the screenshots and the
+feature graphic). Open-source licences: `THIRD_PARTY_NOTICES.md`.
+
 ## Building
 
 - Minimum Android 7.0 (API 24), target API 36.
